@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>個人理財健檢與儲蓄計畫</title>
+    <!-- 引入 Tailwind CSS (用於網頁排版與樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 與 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel (用於在瀏覽器直接編譯 React 語法) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
@@ -44,6 +47,9 @@
         const IconDollarSign = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         );
+        const IconEdit3 = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        );
         const IconPlus = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         );
@@ -59,38 +65,64 @@
         const IconSave = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         );
+        const IconRefreshCw = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        );
 
         const FinancialPlanner = () => {
           const [activeTab, setActiveTab] = useState('dashboard');
+          const [isSyncing, setIsSyncing] = useState(false);
           
-          // 0. 匯率狀態
+          // 0. 匯率狀態 (加入 LocalStorage 讀取)
           const [usdRate, setUsdRate] = useState(() => {
             const saved = localStorage.getItem('fp_usdRate');
             return saved !== null ? Number(saved) : 31.5;
           });
 
-          // 1. 資產預設狀態 (全歸零)
+          // 1. 資產預設狀態 (清空為0，適合新使用者)
           const defaultAssets = {
             cashAccounts: [{ id: 1, name: '主要銀行存款', amount: 0 }],
             twStocks: [],
             usStocks: [],
             etfs: [],
-            insuranceUSD: 0,
-            fixedAssets: 0
+            insurances: [{ id: 1, name: '儲蓄險 / 壽險', amount: 0, currency: 'TWD' }],
+            fixedAssetsList: [{ id: 1, name: '房地產 / 汽機車', amount: 0 }]
           };
 
           const [assets, setAssets] = useState(() => {
             const saved = localStorage.getItem('fp_assets');
-            return saved ? JSON.parse(saved) : defaultAssets;
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              // 向下相容處理：舊版的保險與固定資產轉為陣列結構
+              if (parsed.insuranceUSD !== undefined || parsed.fixedAssets !== undefined) {
+                parsed.insurances = parsed.insurances || [];
+                if (parsed.insuranceUSD > 0) {
+                  parsed.insurances.push({ id: Date.now(), name: '美金儲蓄險', amount: Number(parsed.insuranceUSD), currency: 'USD' });
+                }
+                parsed.fixedAssetsList = parsed.fixedAssetsList || [];
+                if (parsed.fixedAssets > 0) {
+                  parsed.fixedAssetsList.push({ id: Date.now() + 1, name: '機車估值', amount: Number(parsed.fixedAssets) });
+                }
+                delete parsed.insuranceUSD;
+                delete parsed.fixedAssets;
+              }
+              
+              // 確保新陣列存在
+              if (!parsed.insurances) parsed.insurances = [];
+              if (!parsed.fixedAssetsList) parsed.fixedAssetsList = [];
+
+              return parsed;
+            }
+            return defaultAssets;
           });
 
-          // 2. 負債預設狀態 (全歸零)
+          // 2. 負債預設狀態 (清空為0，適合新使用者)
           const defaultLiabilities = {
             creditCards: [
-              { id: 1, name: '信用卡未繳款', amount: 0 }
+              { id: 1, name: '常用信用卡 (含分期)', amount: 0 }
             ],
             loans: [
-              { id: 1, name: '貸款項目', amount: 0 }
+              { id: 1, name: '一般貸款', amount: 0 }
             ]
           };
 
@@ -98,10 +130,11 @@
             const saved = localStorage.getItem('fp_liabilities');
             if (saved) {
               const parsed = JSON.parse(saved);
+              // 向下相容處理：如果使用者 LocalStorage 存的是舊版的單一數值結構，自動轉成陣列結構
               if (parsed.creditCard !== undefined || parsed.personalLoan !== undefined) {
                 return {
-                  creditCards: [{ id: 1, name: '信用卡未繳款', amount: parsed.creditCard || 0 }],
-                  loans: [{ id: 1, name: '貸款項目', amount: parsed.personalLoan || 0 }]
+                  creditCards: [{ id: 1, name: '信用卡未繳款 (含分期)', amount: parsed.creditCard || 0 }],
+                  loans: [{ id: 1, name: '信用貸款', amount: parsed.personalLoan || 0 }]
                 };
               }
               return parsed;
@@ -109,13 +142,18 @@
             return defaultLiabilities;
           });
 
-          // 3. 現金流預設狀態 (全歸零)
+          // 3. 現金流預設狀態 (清空為0，適合新使用者)
           const defaultCashFlow = {
             income: [
-              { id: 1, name: '每月薪資', amount: 0 }
+              { id: 1, name: '每月薪資 (實拿)', amount: 0 },
+              { id: 2, name: '其他收入', amount: 0 }
             ],
             expenses: [
-              { id: 1, name: '基本生活費', amount: 0 }
+              { id: 1, name: '房租 / 房貸', amount: 0 },
+              { id: 2, name: '生活費 (飲食/日用)', amount: 0 },
+              { id: 3, name: '交通費', amount: 0 },
+              { id: 4, name: '電信與網路費', amount: 0 },
+              { id: 5, name: '保險費', amount: 0 }
             ]
           };
 
@@ -125,19 +163,85 @@
           });
 
           // --- 自動儲存 (LocalStorage) 副作用 ---
-          useEffect(() => { localStorage.setItem('fp_usdRate', usdRate.toString()); }, [usdRate]);
-          useEffect(() => { localStorage.setItem('fp_assets', JSON.stringify(assets)); }, [assets]);
-          useEffect(() => { localStorage.setItem('fp_liabilities', JSON.stringify(liabilities)); }, [liabilities]);
-          useEffect(() => { localStorage.setItem('fp_cashFlow', JSON.stringify(cashFlow)); }, [cashFlow]);
+          useEffect(() => {
+            localStorage.setItem('fp_usdRate', usdRate.toString());
+          }, [usdRate]);
 
-          // --- 一鍵歸零功能 ---
-          const handleReset = () => {
-            if (window.confirm('確定要清空所有資料嗎？\n按下確定後，所有的數字都會歸零重新開始喔！')) {
-              setAssets(defaultAssets);
-              setLiabilities(defaultLiabilities);
-              setCashFlow(defaultCashFlow);
+          useEffect(() => {
+            localStorage.setItem('fp_assets', JSON.stringify(assets));
+          }, [assets]);
+
+          useEffect(() => {
+            localStorage.setItem('fp_liabilities', JSON.stringify(liabilities));
+          }, [liabilities]);
+
+          useEffect(() => {
+            localStorage.setItem('fp_cashFlow', JSON.stringify(cashFlow));
+          }, [cashFlow]);
+
+          // --- 自動取得最新股價邏輯 ---
+          const handleSyncPrices = async () => {
+            setIsSyncing(true);
+            
+            const fetchItemPrice = async (item, isTw) => {
+              // 取得代號，若沒有填寫代號，嘗試從名稱欄位猜測 (僅包含英數字時)
+              let queryTicker = (item.ticker || '').trim().toUpperCase();
+              if (!queryTicker) {
+                  if (/^[A-Z0-9.]+$/i.test(item.name.trim())) {
+                      queryTicker = item.name.trim().toUpperCase();
+                  } else {
+                      return item; // 若沒有符合的代號，跳過更新
+                  }
+              }
+              
+              // 若是台股/ETF 且代號為純數字，自動補上 .TW (Yahoo 財經的台股後綴)
+              if (isTw && /^\d+$/.test(queryTicker)) {
+                  queryTicker += '.TW';
+              }
+
+              try {
+                  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${queryTicker}?interval=1d&range=1d&_=${Date.now()}`;
+                  // 使用 allorigins 作為免費代理來繞過瀏覽器 CORS 限制
+                  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                  const res = await fetch(proxyUrl);
+                  const data = await res.json();
+                  
+                  if (data.contents) {
+                      const parsed = JSON.parse(data.contents);
+                      if (parsed.chart && parsed.chart.result && parsed.chart.result.length > 0) {
+                          const price = parsed.chart.result[0].meta.regularMarketPrice;
+                          if (price !== undefined) {
+                              return { ...item, price: Number(price.toFixed(2)) };
+                          }
+                      }
+                  }
+              } catch (err) {
+                  console.error('更新股價失敗:', queryTicker, err);
+              }
+              return item; 
+            };
+
+            try {
+                // 平行發送所有請求以加快速度
+                const [updatedTw, updatedEtfs, updatedUs] = await Promise.all([
+                    Promise.all(assets.twStocks.map(item => fetchItemPrice(item, true))),
+                    Promise.all(assets.etfs.map(item => fetchItemPrice(item, true))),
+                    Promise.all(assets.usStocks.map(item => fetchItemPrice(item, false)))
+                ]);
+
+                setAssets(prev => ({
+                    ...prev,
+                    twStocks: updatedTw,
+                    etfs: updatedEtfs,
+                    usStocks: updatedUs
+                }));
+            } catch (err) {
+                console.error("同步總體發生錯誤:", err);
+            } finally {
+                setIsSyncing(false);
             }
           };
+
 
           // --- 自動計算邏輯 ---
           const calculations = useMemo(() => {
@@ -146,23 +250,30 @@
             const usStockTotalUSD = assets.usStocks.reduce((sum, stock) => sum + (stock.shares * stock.price), 0);
             const usStockTotalTWD = usStockTotalUSD * usdRate;
             const etfTotal = assets.etfs.reduce((sum, etf) => sum + (etf.shares * etf.price), 0);
-            const insuranceTotalTWD = assets.insuranceUSD * usdRate;
             
-            const insuranceAndFixedTotalTWD = insuranceTotalTWD + assets.fixedAssets;
+            // 計算保險與固定資產
+            const insuranceTotalTWD = assets.insurances.reduce((sum, item) => {
+              return sum + (item.currency === 'USD' ? item.amount * usdRate : item.amount);
+            }, 0);
+            const totalFixedAssets = assets.fixedAssetsList.reduce((sum, item) => sum + item.amount, 0);
+            const insuranceAndFixedTotalTWD = insuranceTotalTWD + totalFixedAssets;
+            
             const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal + insuranceTotalTWD;
-            const totalAssets = totalCash + totalInvestments + assets.fixedAssets;
+            const totalAssets = totalCash + totalInvestments + totalFixedAssets;
 
+            // 計算負債小計
             const totalCreditCards = liabilities.creditCards ? liabilities.creditCards.reduce((sum, item) => sum + item.amount, 0) : 0;
             const totalLoans = liabilities.loans ? liabilities.loans.reduce((sum, item) => sum + item.amount, 0) : 0;
             const totalLiabilities = totalCreditCards + totalLoans;
 
             const netWorth = totalAssets - totalLiabilities;
+
             const totalIncome = cashFlow.income.reduce((sum, item) => sum + item.amount, 0);
             const totalExpenses = cashFlow.expenses.reduce((sum, item) => sum + item.amount, 0);
             const monthlyNet = totalIncome - totalExpenses;
 
             return {
-              totalCash, twStockTotal, usStockTotalUSD, usStockTotalTWD, etfTotal, insuranceTotalTWD, insuranceAndFixedTotalTWD,
+              totalCash, twStockTotal, usStockTotalUSD, usStockTotalTWD, etfTotal, insuranceTotalTWD, totalFixedAssets, insuranceAndFixedTotalTWD,
               totalInvestments, totalAssets, 
               totalCreditCards, totalLoans, totalLiabilities, netWorth,
               totalIncome, totalExpenses, monthlyNet
@@ -176,27 +287,47 @@
           // --- 動態行動計畫與診斷判斷 ---
           const actionPlans = useMemo(() => {
             const plans = [];
+            // 判斷 1: 卡債問題
             if (calculations.totalCreditCards > 0) {
-              plans.push({ title: "消滅信用卡債務 (最優先)", desc: `目前有 ${formatCurrency(calculations.totalCreditCards)} 的卡債。優先拿現金結清它，不要繳最低，這相當於立刻賺到高額的無風險報酬。` });
+              plans.push({
+                  title: "消滅信用卡債務 (最優先)",
+                  desc: `目前有 ${formatCurrency(calculations.totalCreditCards)} 的卡債。優先拿現金或變賣獲利資產來結清它，不要繳最低，這相當於立刻賺到高額的無風險報酬。`
+              });
             }
+            
+            // 判斷 2: 現金流問題
             if (calculations.monthlyNet < 0) {
               const investmentExp = cashFlow.expenses.find(e => e.name.includes('投資'))?.amount || 0;
               if (investmentExp > 0) {
-                  plans.push({ title: "暫停定期投資止血", desc: `每月透支中，建議先暫停 ${formatCurrency(investmentExp)} 的投資扣款。透支投資是非常危險的。` });
+                  plans.push({
+                      title: "暫停定期投資止血",
+                      desc: `每月透支中，建議先暫停 ${formatCurrency(investmentExp)} 的投資扣款。透支或借錢投資是非常危險的。`
+                  });
               }
-              plans.push({ title: "縮減非必要支出 (找回現金流)", desc: `目前每月透支 ${formatCurrency(Math.abs(calculations.monthlyNet))}。請檢視並降低生活費或娛樂費，直到現金流轉正。` });
-            } else if (calculations.monthlyNet > 0 || calculations.totalAssets > 0) {
-              plans.push({ title: "持續維持正向現金流", desc: `太棒了！你每個月有 ${formatCurrency(calculations.monthlyNet)} 的結餘，這代表收支控制得很健康。` });
-              if (calculations.totalCash < 100000) {
-                  plans.push({ title: "建立緊急預備金", desc: `目前的活期存款 (${formatCurrency(calculations.totalCash)}) 偏少。建議優先把結餘存下來，存滿至少半年生活費。` });
-              } else if (calculations.totalCreditCards === 0) {
-                  plans.push({ title: "放大投資部位", desc: `預備金充足且無壞債。建議將每月結餘的 ${formatCurrency(calculations.monthlyNet)} 定期投入優質資產享受複利。` });
-              }
+              plans.push({
+                  title: "縮減非必要支出 (找回現金流)",
+                  desc: `目前每月透支 ${formatCurrency(Math.abs(calculations.monthlyNet))}。請強迫自己檢視並降低生活費、娛樂費或高額訂閱月費，直到現金流轉正。`
+              });
             } else {
-              plans.push({ title: "開始你的理財第一步", desc: "目前資料都是空的！趕快到旁邊的標籤頁輸入你的資產與收支狀況，讓我幫你診斷吧。" });
+              // 現金流為正時的計畫
+              plans.push({
+                  title: "持續維持正向現金流",
+                  desc: `太棒了！你每個月有 ${formatCurrency(calculations.monthlyNet)} 的結餘，這代表你的收支控制得非常健康。`
+              });
+              if (calculations.totalCash < 100000) {
+                  plans.push({
+                      title: "建立或補足緊急預備金",
+                      desc: `目前的活期存款 (${formatCurrency(calculations.totalCash)}) 偏少。建議優先把結餘存下來，直到存滿至少 10 萬元或半年生活費為止。`
+                  });
+              } else if (calculations.totalCreditCards === 0) {
+                  plans.push({
+                      title: "放大投資部位",
+                      desc: `緊急預備金充足且無高息壞債。建議將每月結餘的 ${formatCurrency(calculations.monthlyNet)} 好好規劃，定期投入優質資產享受複利效應。`
+                  });
+              }
             }
             return plans;
-          }, [calculations.totalCreditCards, calculations.monthlyNet, calculations.totalCash, calculations.totalAssets, cashFlow.expenses]);
+          }, [calculations.totalCreditCards, calculations.monthlyNet, calculations.totalCash, cashFlow.expenses]);
 
           // --- 事件處理 ---
           const handleItemChange = (category, listName, id, field, value) => {
@@ -204,7 +335,7 @@
               ...prev,
               [listName]: prev[listName].map(item => {
                 if (item.id === id) {
-                  const finalValue = field === 'name' ? value : (Number(value) || 0);
+                  const finalValue = (field === 'name' || field === 'currency' || field === 'ticker') ? value : (Number(value) || 0);
                   return { ...item, [field]: finalValue };
                 }
                 return item;
@@ -215,7 +346,11 @@
             else if (category === 'cashFlow') setCashFlow(updateState);
           };
 
-          const handleAddItem = (category, listName, defaultItem) => {
+          const handleAddItem = (arg1, arg2, arg3) => {
+            const category = typeof arg3 !== 'undefined' ? arg1 : 'assets';
+            const listName = typeof arg3 !== 'undefined' ? arg2 : arg1;
+            const defaultItem = typeof arg3 !== 'undefined' ? arg3 : arg2;
+            
             const updateState = (prev) => ({
               ...prev,
               [listName]: [...prev[listName], { ...defaultItem, id: Date.now() + Math.random() }]
@@ -225,7 +360,11 @@
             else if (category === 'cashFlow') setCashFlow(updateState);
           };
 
-          const handleRemoveItem = (category, listName, id) => {
+          const handleRemoveItem = (arg1, arg2, arg3) => {
+            const category = typeof arg3 !== 'undefined' ? arg1 : 'assets';
+            const listName = typeof arg3 !== 'undefined' ? arg2 : arg1;
+            const id = typeof arg3 !== 'undefined' ? arg3 : arg2;
+
             const updateState = (prev) => ({
               ...prev,
               [listName]: prev[listName].filter(item => item.id !== id)
@@ -235,6 +374,7 @@
             else if (category === 'cashFlow') setCashFlow(updateState);
           };
 
+          // 處理項目順序移動
           const handleMoveItem = (category, listName, index, direction) => {
             const updateState = (prev) => {
               const newList = [...prev[listName]];
@@ -284,7 +424,7 @@
             <div className="min-h-screen text-gray-800 p-4 md:p-8">
               <div className="max-w-6xl mx-auto space-y-6">
                 
-                {/* 頂部標題與匯率 & 清空按鈕 */}
+                {/* 頂部標題與匯率 */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm">
                   <div>
                     <div className="flex items-center gap-3">
@@ -295,20 +435,15 @@
                     </div>
                     <p className="text-gray-500 mt-1">即時盤點資產負債，規劃專屬現金流</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={handleReset} className="flex items-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg border border-red-100 transition-colors text-sm font-medium">
-                      <IconTrash size={16}/> 清空歸零
-                    </button>
-                    <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
-                      <IconDollarSign size={16} className="text-blue-600" />
-                      <span className="text-sm text-blue-800 font-medium">匯率設定:</span>
-                      <input 
-                        type="number" 
-                        value={usdRate} 
-                        onChange={(e) => setUsdRate(Number(e.target.value) || 0)}
-                        className="w-20 px-2 py-1 text-sm border border-blue-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+                  <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
+                    <IconDollarSign size={16} className="text-blue-600" />
+                    <span className="text-sm text-blue-800 font-medium">匯率設定 (USD/TWD):</span>
+                    <input 
+                      type="number" 
+                      value={usdRate} 
+                      onChange={(e) => setUsdRate(Number(e.target.value) || 0)}
+                      className="w-20 px-2 py-1 text-sm border border-blue-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
 
@@ -352,7 +487,7 @@
                 {/* 內容區域 */}
                 <div className="bg-white shadow-sm rounded-b-2xl p-6 -mt-6 pt-10">
                   
-                  {/* TAB 1: 診斷與計畫 */}
+                  {/* TAB 1: 診斷與計畫 (已全面動態化) */}
                   {activeTab === 'dashboard' && (
                     <div className="space-y-8">
                       <section>
@@ -361,6 +496,7 @@
                         </h2>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           
+                          {/* 動態診斷卡片 */}
                           <div className="bg-amber-50 rounded-xl p-6 border border-amber-200">
                             <h3 className="font-bold text-amber-900 text-lg mb-4">當前財務狀況診斷</h3>
                             <ul className="space-y-4">
@@ -410,6 +546,7 @@
                             </ul>
                           </div>
 
+                          {/* 動態行動計畫卡片 */}
                           <div className="bg-green-50 rounded-xl p-6 border border-green-200">
                             <h3 className="font-bold text-green-900 text-lg mb-4">系統專屬行動指南 (Action Plan)</h3>
                             <ol className="space-y-4 relative border-l border-green-300 ml-3">
@@ -432,6 +569,7 @@
                     <div className="space-y-8">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         
+                        {/* 現金與固定資產 */}
                         <div className="space-y-6">
                           <div className="bg-gray-50 p-5 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-4">
@@ -439,7 +577,7 @@
                                 <IconWallet size={18}/> 銀行存款與現金
                                 <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.totalCash)}</span>
                               </h3>
-                              <button onClick={() => handleAddItem('assets', 'cashAccounts', { name: '新帳戶', amount: 0 })} className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded transition-colors">
+                              <button onClick={() => handleAddItem('assets', 'cashAccounts', { name: '', amount: 0 })} className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded transition-colors">
                                 <IconPlus size={14}/> 新增帳戶
                               </button>
                             </div>
@@ -470,104 +608,184 @@
                               保險與固定資產
                               <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.insuranceAndFixedTotalTWD)}</span>
                             </h3>
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center bg-white p-2 rounded border">
-                                <span className="text-gray-600 font-medium px-2">美金儲蓄險 (USD)</span>
-                                <div className="flex items-center gap-2 pr-2">
-                                  <span className="text-gray-500">$</span>
-                                  <input type="number" value={assets.insuranceUSD} onChange={(e) => handleObjChange('assets', 'insuranceUSD', e.target.value)} className="w-28 px-2 py-1 border rounded text-right font-medium outline-none" />
-                                </div>
+                            
+                            {/* 保險區塊 */}
+                            <div className="mb-4">
+                              <div className="flex justify-between items-center border-b border-gray-200 pb-1 mb-2">
+                                <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                                  具現價保單
+                                  <span className="text-xs text-gray-500">(合台幣: {formatCurrency(calculations.insuranceTotalTWD)})</span>
+                                </h4>
+                                <button onClick={() => handleAddItem('assets', 'insurances', { name: '', amount: 0, currency: 'TWD' })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+                                  <IconPlus size={14}/> 新增
+                                </button>
                               </div>
-                              <div className="text-right text-sm text-gray-500 px-2">折合台幣: {formatCurrency(calculations.insuranceTotalTWD)}</div>
-                              
-                              <div className="flex justify-between items-center pt-2 border-t border-gray-200 bg-white p-2 rounded border mt-2">
-                                <span className="text-gray-600 font-medium px-2">機車/其他固定資產</span>
-                                <div className="flex items-center gap-2 pr-2">
-                                  <span className="text-gray-500">$</span>
-                                  <input type="number" value={assets.fixedAssets} onChange={(e) => handleObjChange('assets', 'fixedAssets', e.target.value)} className="w-28 px-2 py-1 border rounded text-right font-medium outline-none" />
-                                </div>
+                              <div className="space-y-2">
+                                {assets.insurances.map((item, index) => (
+                                  <div key={`ins-${item.id}`} className="flex justify-between items-center bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-shadow">
+                                    <div className="flex items-center gap-1 w-2/5">
+                                      <div className="flex flex-col mr-1">
+                                        <button type="button" onClick={() => handleMoveItem('assets', 'insurances', index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronUp size={16}/></button>
+                                        <button type="button" onClick={() => handleMoveItem('assets', 'insurances', index, 'down')} disabled={index === assets.insurances.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronDown size={16}/></button>
+                                      </div>
+                                      <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'insurances', item.id, 'name', e.target.value)} className="w-full px-1 py-1 bg-transparent outline-none font-medium text-gray-700 placeholder-gray-400" placeholder="保單名稱" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <select value={item.currency} onChange={(e) => handleItemChange('assets', 'insurances', item.id, 'currency', e.target.value)} className="text-xs border rounded p-1.5 bg-gray-50 outline-none text-gray-600 focus:border-blue-500">
+                                        <option value="TWD">TWD</option>
+                                        <option value="USD">USD</option>
+                                      </select>
+                                      <input type="number" value={item.amount} onChange={(e) => handleItemChange('assets', 'insurances', item.id, 'amount', e.target.value)} className="w-20 sm:w-24 px-2 py-1 border rounded text-right font-medium outline-none focus:border-blue-500" />
+                                      <button onClick={() => handleRemoveItem('assets', 'insurances', item.id)} className="text-gray-400 hover:text-red-500 p-1 transition-colors">
+                                        <IconTrash size={16}/>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 固定資產區塊 */}
+                            <div>
+                              <div className="flex justify-between items-center border-b border-gray-200 pb-1 mb-2">
+                                <h4 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                                  固定資產 (房/車等)
+                                  <span className="text-xs text-gray-500">(合台幣: {formatCurrency(calculations.totalFixedAssets)})</span>
+                                </h4>
+                                <button onClick={() => handleAddItem('assets', 'fixedAssetsList', { name: '', amount: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+                                  <IconPlus size={14}/> 新增
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {assets.fixedAssetsList.map((item, index) => (
+                                  <div key={`fixed-${item.id}`} className="flex justify-between items-center bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-shadow">
+                                    <div className="flex items-center gap-1 w-1/2">
+                                      <div className="flex flex-col mr-1">
+                                        <button type="button" onClick={() => handleMoveItem('assets', 'fixedAssetsList', index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronUp size={16}/></button>
+                                        <button type="button" onClick={() => handleMoveItem('assets', 'fixedAssetsList', index, 'down')} disabled={index === assets.fixedAssetsList.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronDown size={16}/></button>
+                                      </div>
+                                      <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'fixedAssetsList', item.id, 'name', e.target.value)} className="w-full px-1 py-1 bg-transparent outline-none font-medium text-gray-700 placeholder-gray-400" placeholder="資產名稱" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-500 font-medium">$</span>
+                                      <input type="number" value={item.amount} onChange={(e) => handleItemChange('assets', 'fixedAssetsList', item.id, 'amount', e.target.value)} className="w-24 px-2 py-1 border rounded text-right font-medium outline-none focus:border-blue-500" />
+                                      <button onClick={() => handleRemoveItem('assets', 'fixedAssetsList', item.id)} className="text-gray-400 hover:text-red-500 p-1 transition-colors">
+                                        <IconTrash size={16}/>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           </div>
                         </div>
 
+                        {/* 投資部位 */}
                         <div className="space-y-6">
                           <div className="bg-gray-50 p-5 rounded-xl border border-gray-100">
-                            <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-bold text-gray-800 flex items-center gap-2"><IconTrendingUp size={18}/> 投資部位</h3>
-                              <span className="text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-full text-sm">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                              <h3 className="font-bold text-gray-800 flex flex-wrap items-center gap-2">
+                                <IconTrendingUp size={18}/> 投資部位
+                                <button 
+                                  onClick={handleSyncPrices} 
+                                  disabled={isSyncing}
+                                  className={`text-xs ml-0 sm:ml-2 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 font-medium ${isSyncing ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 shadow-sm'}`}
+                                  title="自動透過 Yahoo 財經抓取最新股價"
+                                >
+                                  <IconRefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+                                  {isSyncing ? '更新中請稍候...' : '一鍵更新股價'}
+                                </button>
+                              </h3>
+                              <span className="text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-full text-sm shadow-sm border border-blue-100">
                                 總計: {formatCurrency(calculations.totalInvestments)}
                               </span>
                             </div>
+                            
+                            <div className="mb-4 bg-yellow-50 text-yellow-800 text-xs p-3 rounded-lg border border-yellow-200">
+                              💡 <strong>自動抓取教學：</strong>請在下方「代號」填入 Yahoo 財經代號。台股純數字會自動補 <code>.TW</code> (如輸入 <code>2330</code>)，上櫃請手動輸入 <code>.TWO</code> (如 <code>6223.TWO</code>)；美股請直接輸入 (如 <code>AAPL</code>)。
+                            </div>
 
+                            {/* 台股 */}
                             <div className="mb-6">
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                 <h4 className="text-sm font-semibold text-gray-500 flex items-center gap-2">
                                   台股
                                   <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.twStockTotal)}</span>
                                 </h4>
-                                <button onClick={() => handleAddItem('assets', 'twStocks', { name: '新台股', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+                                <button onClick={() => handleAddItem('assets', 'twStocks', { name: '', ticker: '', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
                                   <IconPlus size={14}/> 新增
                                 </button>
                               </div>
                               <div className="space-y-2">
                                 {assets.twStocks.map((item, index) => (
-                                  <div key={`twStocks-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500">
-                                    <div className="flex flex-col mr-1">
+                                  <div key={`twStocks-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-shadow gap-1">
+                                    <div className="flex flex-col shrink-0">
                                       <button type="button" onClick={() => handleMoveItem('assets', 'twStocks', index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronUp size={14}/></button>
                                       <button type="button" onClick={() => handleMoveItem('assets', 'twStocks', index, 'down')} disabled={index === assets.twStocks.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronDown size={14}/></button>
                                     </div>
-                                    <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'name', e.target.value)} className="font-medium w-16 px-1 py-1 border-r outline-none text-gray-700 bg-transparent" placeholder="代號/名稱"/>
-                                    <div className="flex items-center gap-1 pl-1 flex-1">
-                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'shares', e.target.value)} className="w-16 px-1 py-1 text-right outline-none bg-transparent" />
-                                      <span className="text-gray-400 text-xs">股</span>
+                                    <div className="flex flex-col flex-1 min-w-[70px]">
+                                      <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'name', e.target.value)} className="w-full font-medium px-1 py-0.5 outline-none text-gray-800 bg-transparent border-b border-dashed border-gray-200" placeholder="名稱(選)"/>
+                                      <input type="text" value={item.ticker || ''} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'ticker', e.target.value)} className="w-full font-mono px-1 py-0.5 outline-none text-blue-600 bg-transparent text-xs uppercase" placeholder="代號(如2330)"/>
                                     </div>
-                                    <span className="text-gray-300 px-1">×</span>
-                                    <div className="flex items-center gap-1">
-                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'price', e.target.value)} className="w-14 px-1 py-1 text-right outline-none bg-transparent" step="0.01"/>
-                                      <span className="text-gray-400 text-xs w-3">元</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'shares', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" />
+                                      <span className="text-gray-500 text-xs font-medium ml-1">股</span>
                                     </div>
-                                    <span className="font-bold text-gray-700 w-20 text-right">{formatCurrency(item.shares * item.price)}</span>
-                                    <button onClick={() => handleRemoveItem('assets', 'twStocks', item.id)} className="text-gray-300 hover:text-red-500 p-1 ml-1 transition-colors"><IconTrash size={16}/></button>
+                                    <span className="text-gray-300 shrink-0 text-xs">×</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'twStocks', item.id, 'price', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" step="0.01"/>
+                                      <span className="text-gray-500 text-xs font-medium ml-1">元</span>
+                                    </div>
+                                    <span className="font-bold text-gray-800 w-16 sm:w-20 text-right shrink-0 truncate" title={formatCurrency(item.shares * item.price)}>
+                                      {formatCurrency(item.shares * item.price)}
+                                    </span>
+                                    <button onClick={() => handleRemoveItem('assets', 'twStocks', item.id)} className="text-gray-400 hover:text-red-500 p-1 ml-1 transition-colors shrink-0 bg-gray-50 rounded hover:bg-red-50"><IconTrash size={16}/></button>
                                   </div>
                                 ))}
                               </div>
                             </div>
 
+                            {/* ETF */}
                             <div className="mb-6">
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                 <h4 className="text-sm font-semibold text-gray-500 flex items-center gap-2">
                                   ETF
                                   <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.etfTotal)}</span>
                                 </h4>
-                                <button onClick={() => handleAddItem('assets', 'etfs', { name: '新ETF', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+                                <button onClick={() => handleAddItem('assets', 'etfs', { name: '', ticker: '', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
                                   <IconPlus size={14}/> 新增
                                 </button>
                               </div>
                               <div className="space-y-2">
                                 {assets.etfs.map((item, index) => (
-                                  <div key={`etfs-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500">
-                                    <div className="flex flex-col mr-1">
+                                  <div key={`etfs-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-shadow gap-1">
+                                    <div className="flex flex-col shrink-0">
                                       <button type="button" onClick={() => handleMoveItem('assets', 'etfs', index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronUp size={14}/></button>
                                       <button type="button" onClick={() => handleMoveItem('assets', 'etfs', index, 'down')} disabled={index === assets.etfs.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronDown size={14}/></button>
                                     </div>
-                                    <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'name', e.target.value)} className="font-medium w-16 px-1 py-1 border-r outline-none text-gray-700 bg-transparent" placeholder="代號/名稱"/>
-                                    <div className="flex items-center gap-1 pl-1 flex-1">
-                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'shares', e.target.value)} className="w-16 px-1 py-1 text-right outline-none bg-transparent" />
-                                      <span className="text-gray-400 text-xs">股</span>
+                                    <div className="flex flex-col flex-1 min-w-[70px]">
+                                      <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'name', e.target.value)} className="w-full font-medium px-1 py-0.5 outline-none text-gray-800 bg-transparent border-b border-dashed border-gray-200" placeholder="名稱(選)"/>
+                                      <input type="text" value={item.ticker || ''} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'ticker', e.target.value)} className="w-full font-mono px-1 py-0.5 outline-none text-blue-600 bg-transparent text-xs uppercase" placeholder="代號(如0050)"/>
                                     </div>
-                                    <span className="text-gray-300 px-1">×</span>
-                                    <div className="flex items-center gap-1">
-                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'price', e.target.value)} className="w-14 px-1 py-1 text-right outline-none bg-transparent" step="0.01"/>
-                                      <span className="text-gray-400 text-xs w-3">元</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'shares', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" />
+                                      <span className="text-gray-500 text-xs font-medium ml-1">股</span>
                                     </div>
-                                    <span className="font-bold text-gray-700 w-20 text-right">{formatCurrency(item.shares * item.price)}</span>
-                                    <button onClick={() => handleRemoveItem('assets', 'etfs', item.id)} className="text-gray-300 hover:text-red-500 p-1 ml-1 transition-colors"><IconTrash size={16}/></button>
+                                    <span className="text-gray-300 shrink-0 text-xs">×</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'etfs', item.id, 'price', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" step="0.01"/>
+                                      <span className="text-gray-500 text-xs font-medium ml-1">元</span>
+                                    </div>
+                                    <span className="font-bold text-gray-800 w-16 sm:w-20 text-right shrink-0 truncate" title={formatCurrency(item.shares * item.price)}>
+                                      {formatCurrency(item.shares * item.price)}
+                                    </span>
+                                    <button onClick={() => handleRemoveItem('assets', 'etfs', item.id)} className="text-gray-400 hover:text-red-500 p-1 ml-1 transition-colors shrink-0 bg-gray-50 rounded hover:bg-red-50"><IconTrash size={16}/></button>
                                   </div>
                                 ))}
                               </div>
                             </div>
 
+                            {/* 美股 */}
                             <div>
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                 <h4 className="text-sm font-semibold text-gray-500 flex flex-wrap items-center gap-2">
@@ -575,29 +793,34 @@
                                   <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatUSD(calculations.usStockTotalUSD)}</span>
                                   <span className="text-xs text-gray-400">(約 {formatCurrency(calculations.usStockTotalTWD)})</span>
                                 </h4>
-                                <button onClick={() => handleAddItem('assets', 'usStocks', { name: '新美股', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+                                <button onClick={() => handleAddItem('assets', 'usStocks', { name: '', ticker: '', shares: 0, price: 0 })} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
                                   <IconPlus size={14}/> 新增
                                 </button>
                               </div>
                               <div className="space-y-2">
                                 {assets.usStocks.map((item, index) => (
-                                  <div key={`usStocks-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500">
-                                    <div className="flex flex-col mr-1">
+                                  <div key={`usStocks-${item.id}`} className="flex items-center justify-between text-sm bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-shadow gap-1">
+                                    <div className="flex flex-col shrink-0">
                                       <button type="button" onClick={() => handleMoveItem('assets', 'usStocks', index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronUp size={14}/></button>
                                       <button type="button" onClick={() => handleMoveItem('assets', 'usStocks', index, 'down')} disabled={index === assets.usStocks.length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-20"><IconChevronDown size={14}/></button>
                                     </div>
-                                    <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'name', e.target.value)} className="font-medium w-16 px-1 py-1 border-r outline-none text-gray-700 bg-transparent" placeholder="代號"/>
-                                    <div className="flex items-center gap-1 pl-1 flex-1">
-                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'shares', e.target.value)} className="w-16 px-1 py-1 text-right outline-none bg-transparent" />
-                                      <span className="text-gray-400 text-xs">股</span>
+                                    <div className="flex flex-col flex-1 min-w-[70px]">
+                                      <input type="text" value={item.name} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'name', e.target.value)} className="w-full font-medium px-1 py-0.5 outline-none text-gray-800 bg-transparent border-b border-dashed border-gray-200" placeholder="名稱(選)"/>
+                                      <input type="text" value={item.ticker || ''} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'ticker', e.target.value)} className="w-full font-mono px-1 py-0.5 outline-none text-blue-600 bg-transparent text-xs uppercase" placeholder="代號(如AAPL)"/>
                                     </div>
-                                    <span className="text-gray-300 px-1">×</span>
-                                    <div className="flex items-center gap-1">
-                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'price', e.target.value)} className="w-14 px-1 py-1 text-right outline-none bg-transparent" step="0.01"/>
-                                      <span className="text-gray-400 text-xs w-3">$</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.shares} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'shares', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" />
+                                      <span className="text-gray-500 text-xs font-medium ml-1">股</span>
                                     </div>
-                                    <span className="font-bold text-gray-700 w-20 text-right">{formatUSD(item.shares * item.price)}</span>
-                                    <button onClick={() => handleRemoveItem('assets', 'usStocks', item.id)} className="text-gray-300 hover:text-red-500 p-1 ml-1 transition-colors"><IconTrash size={16}/></button>
+                                    <span className="text-gray-300 shrink-0 text-xs">×</span>
+                                    <div className="flex items-center shrink-0">
+                                      <input type="number" value={item.price} onChange={(e) => handleItemChange('assets', 'usStocks', item.id, 'price', e.target.value)} className="w-14 sm:w-16 px-1 py-1 text-right outline-none bg-gray-50 rounded focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors" step="0.01"/>
+                                      <span className="text-gray-500 text-xs font-medium ml-1">$</span>
+                                    </div>
+                                    <span className="font-bold text-gray-800 w-16 sm:w-20 text-right shrink-0 truncate" title={formatUSD(item.shares * item.price)}>
+                                      {formatUSD(item.shares * item.price)}
+                                    </span>
+                                    <button onClick={() => handleRemoveItem('assets', 'usStocks', item.id)} className="text-gray-400 hover:text-red-500 p-1 ml-1 transition-colors shrink-0 bg-gray-50 rounded hover:bg-red-50"><IconTrash size={16}/></button>
                                   </div>
                                 ))}
                               </div>
@@ -610,7 +833,7 @@
                     </div>
                   )}
 
-                  {/* TAB 3: LIABILITIES */}
+                  {/* TAB 3: LIABILITIES (已更新為多筆動態清單結構) */}
                   {activeTab === 'liabilities' && (
                     <div className="max-w-4xl mx-auto space-y-6">
                       <div className="bg-red-50 p-6 rounded-2xl border border-red-100">
@@ -622,13 +845,14 @@
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           
+                          {/* 信用卡區塊 */}
                           <div className="space-y-4">
                             <div className="flex justify-between items-center border-b border-red-200 pb-2">
                               <h4 className="font-bold text-red-800 flex items-center gap-2">
                                 信用卡與分期
                                 <span className="bg-red-200 text-red-800 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.totalCreditCards)}</span>
                               </h4>
-                              <button onClick={() => handleAddItem('liabilities', 'creditCards', { name: '新卡費項目', amount: 0 })} className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-100 px-2 py-1 rounded transition-colors">
+                              <button onClick={() => handleAddItem('liabilities', 'creditCards', { name: '', amount: 0 })} className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-100 px-2 py-1 rounded transition-colors">
                                 <IconPlus size={14}/> 新增卡費
                               </button>
                             </div>
@@ -654,13 +878,14 @@
                             </div>
                           </div>
 
+                          {/* 貸款區塊 */}
                           <div className="space-y-4">
                             <div className="flex justify-between items-center border-b border-red-200 pb-2">
                               <h4 className="font-bold text-red-800 flex items-center gap-2">
                                 各類貸款
                                 <span className="bg-red-200 text-red-800 px-2 py-0.5 rounded-full text-xs font-medium">小計: {formatCurrency(calculations.totalLoans)}</span>
                               </h4>
-                              <button onClick={() => handleAddItem('liabilities', 'loans', { name: '新貸款', amount: 0 })} className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-100 px-2 py-1 rounded transition-colors">
+                              <button onClick={() => handleAddItem('liabilities', 'loans', { name: '', amount: 0 })} className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-100 px-2 py-1 rounded transition-colors">
                                 <IconPlus size={14}/> 新增貸款
                               </button>
                             </div>
@@ -701,13 +926,14 @@
                     <div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         
+                        {/* 收入 */}
                         <div className="space-y-4">
                           <div className="bg-green-50 p-6 rounded-2xl border border-green-100 h-full">
                             <div className="flex justify-between items-center mb-6 border-b border-green-200 pb-3">
                               <h3 className="font-bold text-green-900 flex items-center gap-2 text-lg">
                                 月收入總計: <span className="text-2xl ml-2">{formatCurrency(calculations.totalIncome)}</span>
                               </h3>
-                              <button onClick={() => handleAddItem('cashFlow', 'income', { name: '新收入', amount: 0 })} className="text-sm text-green-700 hover:text-green-900 flex items-center gap-1 bg-green-100 px-2 py-1 rounded transition-colors">
+                              <button onClick={() => handleAddItem('cashFlow', 'income', { name: '', amount: 0 })} className="text-sm text-green-700 hover:text-green-900 flex items-center gap-1 bg-green-100 px-2 py-1 rounded transition-colors">
                                 <IconPlus size={14}/> 新增收入
                               </button>
                             </div>
@@ -735,13 +961,14 @@
                           </div>
                         </div>
 
+                        {/* 支出 */}
                         <div className="space-y-4">
                           <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                             <div className="flex justify-between items-center mb-6 border-b border-orange-200 pb-3">
                               <h3 className="font-bold text-orange-900 flex items-center gap-2 text-lg">
                                 月支出總計: <span className="text-2xl ml-2">{formatCurrency(calculations.totalExpenses)}</span>
                               </h3>
-                              <button onClick={() => handleAddItem('cashFlow', 'expenses', { name: '新支出', amount: 0 })} className="text-sm text-orange-700 hover:text-orange-900 flex items-center gap-1 bg-orange-100 px-2 py-1 rounded transition-colors">
+                              <button onClick={() => handleAddItem('cashFlow', 'expenses', { name: '', amount: 0 })} className="text-sm text-orange-700 hover:text-orange-900 flex items-center gap-1 bg-orange-100 px-2 py-1 rounded transition-colors">
                                 <IconPlus size={14}/> 新增支出
                               </button>
                             </div>
@@ -767,6 +994,7 @@
                               ))}
                             </div>
 
+                            {/* 模擬結果 */}
                             <div className={`mt-6 p-4 rounded-xl border flex items-center justify-between ${calculations.monthlyNet >= 0 ? 'bg-green-100 border-green-200' : 'bg-red-100 border-red-200'}`}>
                               <span className="font-bold text-gray-800">模擬結餘結果：</span>
                               <span className={`text-2xl font-black ${calculations.monthlyNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>

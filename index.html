@@ -23,7 +23,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         // --- 內建圖標組件 ---
         const IconWallet = ({ size = 24, className = "" }) => (
@@ -68,10 +68,18 @@
         const IconRefreshCw = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         );
+        const IconDownload = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        );
+        const IconUpload = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        );
 
         const FinancialPlanner = () => {
           const [activeTab, setActiveTab] = useState('dashboard');
           const [isSyncing, setIsSyncing] = useState(false);
+          const fileInputRef = useRef(null);
+          const [toastMessage, setToastMessage] = useState(null);
           
           // 0. 匯率狀態 (加入 LocalStorage 讀取)
           const [usdRate, setUsdRate] = useState(() => {
@@ -178,6 +186,47 @@
           useEffect(() => {
             localStorage.setItem('fp_cashFlow', JSON.stringify(cashFlow));
           }, [cashFlow]);
+
+          // --- 匯出與匯入功能 ---
+          const showToast = (text, type = 'success') => {
+            setToastMessage({ text, type });
+            setTimeout(() => setToastMessage(null), 3000);
+          };
+
+          const handleExport = () => {
+            const data = { usdRate, assets, liabilities, cashFlow };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            // 檔案名稱自動加上今天的日期
+            downloadAnchorNode.setAttribute("download", `理財健檢備份_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showToast("已成功匯出資料！");
+          };
+
+          const handleImport = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const parsed = JSON.parse(e.target.result);
+                if (parsed.assets) setAssets(parsed.assets);
+                if (parsed.liabilities) setLiabilities(parsed.liabilities);
+                if (parsed.cashFlow) setCashFlow(parsed.cashFlow);
+                if (parsed.usdRate !== undefined) setUsdRate(parsed.usdRate);
+                showToast("資料匯入成功！");
+              } catch (error) {
+                showToast("檔案格式錯誤，無法匯入！", "error");
+                console.error("Import error:", error);
+              }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // 重置 file input，以便下次可以上傳同檔名的檔案
+          };
 
           // --- 自動取得最新股價邏輯 ---
           const handleSyncPrices = async () => {
@@ -422,6 +471,12 @@
 
           return (
             <div className="min-h-screen text-gray-800 p-4 md:p-8">
+              {toastMessage && (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg font-medium text-sm flex items-center gap-2 transition-all ${toastMessage.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>
+                  {toastMessage.type === 'success' ? <IconCheckCircle size={16}/> : <IconAlertTriangle size={16}/>}
+                  {toastMessage.text}
+                </div>
+              )}
               <div className="max-w-6xl mx-auto space-y-6">
                 
                 {/* 頂部標題與匯率 */}
@@ -435,15 +490,28 @@
                     </div>
                     <p className="text-gray-500 mt-1">即時盤點資產負債，規劃專屬現金流</p>
                   </div>
-                  <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
-                    <IconDollarSign size={16} className="text-blue-600" />
-                    <span className="text-sm text-blue-800 font-medium">匯率設定 (USD/TWD):</span>
-                    <input 
-                      type="number" 
-                      value={usdRate} 
-                      onChange={(e) => setUsdRate(Number(e.target.value) || 0)}
-                      className="w-20 px-2 py-1 text-sm border border-blue-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                  <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+                    <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 w-full md:w-auto justify-between">
+                      <div className="flex items-center gap-1">
+                        <IconDollarSign size={16} className="text-blue-600" />
+                        <span className="text-sm text-blue-800 font-medium">匯率 (USD/TWD):</span>
+                      </div>
+                      <input 
+                        type="number" 
+                        value={usdRate} 
+                        onChange={(e) => setUsdRate(Number(e.target.value) || 0)}
+                        className="w-20 px-2 py-1 text-sm border border-blue-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                      <button onClick={handleExport} className="flex-1 md:flex-none flex items-center justify-center gap-1.5 text-sm bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors">
+                        <IconDownload size={15}/> 匯出備份
+                      </button>
+                      <button onClick={() => fileInputRef.current.click()} className="flex-1 md:flex-none flex items-center justify-center gap-1.5 text-sm bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors">
+                        <IconUpload size={15}/> 匯入資料
+                      </button>
+                      <input type="file" accept=".json" ref={fileInputRef} onChange={handleImport} className="hidden" />
+                    </div>
                   </div>
                 </div>
 

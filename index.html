@@ -141,6 +141,11 @@
           useEffect(() => { localStorage.setItem('fp_liabilities', JSON.stringify(liabilities)); }, [liabilities]);
           useEffect(() => { localStorage.setItem('fp_cashFlow', JSON.stringify(cashFlow)); }, [cashFlow]);
 
+          // --- 格式化工具 (均含千分位) ---
+          const formatCurrency = (val) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(val);
+          const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(val);
+          const formatNumber = (val, digits = 0) => new Intl.NumberFormat('zh-TW', { maximumFractionDigits: digits }).format(val);
+
           // --- 核心計算邏輯 ---
           const calculations = useMemo(() => {
             const totalCash = assets.cashAccounts.reduce((sum, acc) => sum + acc.amount, 0);
@@ -149,12 +154,11 @@
             const usStockTotalTWD = usStockTotalUSD * usdRate;
             const etfTotal = assets.etfs.reduce((sum, etf) => sum + (etf.shares * etf.price), 0);
             
-            // 保險與固定資產計算
             const insuranceTotalTWD = assets.insurances.reduce((sum, item) => sum + (item.currency === 'USD' ? item.amount * usdRate : item.amount), 0);
             const totalFixedAssets = assets.fixedAssetsList.reduce((sum, item) => sum + item.amount, 0);
             const insuranceAndFixedTotalTWD = insuranceTotalTWD + totalFixedAssets;
 
-            // 修正：投資部位總計僅包含 證券資產
+            // 投資部位總計僅包含 證券資產 (TWD)
             const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal;
             
             // 總資產 = 現金 + 投資(證券) + 保險 + 固定資產
@@ -182,10 +186,6 @@
               emergencyFundMonths, debtToIncomeRatio, savingsRate, investmentRatio
             };
           }, [assets, liabilities, cashFlow, usdRate]);
-
-          // --- 格式化工具 ---
-          const formatCurrency = (val) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(val);
-          const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(val);
 
           // --- 顧問行動計畫 ---
           const actionPlans = useMemo(() => {
@@ -360,28 +360,28 @@
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
                                             <p className="text-xs text-gray-500">預備金月數</p>
-                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.emergencyFundMonths} 個月</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{formatNumber(calculations.emergencyFundMonths, 1)} 個月</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.emergencyFundMonths >= 6 ? 'bg-green-500' : 'bg-yellow-500'}`} style={{ width: `${Math.min(calculations.emergencyFundMonths * 16.6, 100)}%` }}></div>
                                             </div>
                                         </div>
                                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
                                             <p className="text-xs text-gray-500">儲蓄率</p>
-                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.savingsRate}%</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{formatNumber(calculations.savingsRate, 1)}%</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.savingsRate >= 20 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.max(0, Math.min(calculations.savingsRate, 100))}%` }}></div>
                                             </div>
                                         </div>
                                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
                                             <p className="text-xs text-gray-500">負債負擔比</p>
-                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.debtToIncomeRatio}%</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{formatNumber(calculations.debtToIncomeRatio, 1)}%</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.debtToIncomeRatio <= 30 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.min(calculations.debtToIncomeRatio, 100)}%` }}></div>
                                             </div>
                                         </div>
                                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
                                             <p className="text-xs text-gray-500">投資佔比</p>
-                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.investmentRatio}%</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{formatNumber(calculations.investmentRatio, 1)}%</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 flex">
                                                 <div style={{ width: `${calculations.investmentRatio}%` }} className="h-full bg-blue-500"></div>
                                                 <div style={{ width: `${100-calculations.investmentRatio}%` }} className="h-full bg-orange-300"></div>
@@ -487,7 +487,11 @@
                                             <span className="text-xs font-bold text-blue-700">總計: {formatCurrency(calculations.totalInvestments)}</span>
                                         </div>
                                         <div className="space-y-6">
-                                            {[{ label: '台股', list: 'twStocks',小計: calculations.twStockTotal, def: '2330' }, { label: 'ETF', list: 'etfs', 小計: calculations.etfTotal, def: '0050' }, { label: '美股', list: 'usStocks', 小計: calculations.usStockTotalTWD, def: 'AAPL', unit: '$' }].map(block => (
+                                            {/* 台股/ETF */}
+                                            {[
+                                                { label: '台股', list: 'twStocks',小計: calculations.twStockTotal, def: '2330' }, 
+                                                { label: 'ETF', list: 'etfs', 小計: calculations.etfTotal, def: '0050' }
+                                            ].map(block => (
                                                 <div key={block.list}>
                                                     <div className="flex justify-between items-center border-b pb-1 mb-2">
                                                         <p className="text-xs text-gray-500 font-bold">{block.label} <span className="font-normal">(小計: {formatCurrency(block.小計)})</span></p>
@@ -503,14 +507,44 @@
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-gray-500">
                                                                     <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', block.list, item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1" /><span>股 ×</span>
-                                                                    <input type="number" value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>{block.unit || '元'}</span>
-                                                                    <span className="ml-auto font-bold text-gray-800">{block.unit==='$' ? formatUSD(item.shares*item.price) : formatCurrency(item.shares*item.price)}</span>
+                                                                    <input type="number" value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>元</span>
+                                                                    <span className="ml-auto font-bold text-gray-800">{formatCurrency(item.shares*item.price)}</span>
                                                                 </div>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 </div>
                                             ))}
+                                            
+                                            {/* 美股 - 專屬雙幣小計顯示 */}
+                                            <div>
+                                                <div className="flex justify-between items-center border-b pb-1 mb-2">
+                                                    <div>
+                                                        <p className="text-xs text-gray-500 font-bold">美股</p>
+                                                        <div className="flex flex-col text-[10px] font-normal text-gray-600">
+                                                            <span>(小計: {formatUSD(calculations.usStockTotalUSD)})</span>
+                                                            <span>(約台幣: {formatCurrency(calculations.usStockTotalTWD)})</span>
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => handleAddItem('assets', 'usStocks', { name: '', ticker: '', shares: 0, price: 0 })} className="text-blue-600 text-[10px]">+新增</button>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {assets.usStocks.map((item, idx) => (
+                                                        <div key={item.id} className="bg-white p-2 rounded border text-xs shadow-sm space-y-1">
+                                                            <div className="flex gap-2">
+                                                                <input type="text" value={item.name} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'name', e.target.value)} className="font-bold w-1/2 outline-none border-b border-transparent focus:border-blue-200" placeholder="名稱"/>
+                                                                <input type="text" value={item.ticker} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'ticker', e.target.value)} className="w-1/2 text-blue-600 font-mono outline-none border-b border-transparent focus:border-blue-200" placeholder="代號(AAPL)"/>
+                                                                <button onClick={() => handleRemoveItem('assets', 'usStocks', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={12}/></button>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 text-gray-500">
+                                                                <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1" /><span>股 ×</span>
+                                                                <input type="number" value={item.price} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>$</span>
+                                                                <span className="ml-auto font-bold text-gray-800">{formatUSD(item.shares*item.price)}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

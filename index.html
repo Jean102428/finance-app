@@ -13,9 +13,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-        input[type=number]::-webkit-inner-spin-button, 
-        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type=number] { -moz-appearance: textfield; }
         .progress-bar { transition: width 0.5s ease-in-out; }
         .sync-loading { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -28,54 +25,86 @@
         const { useState, useEffect, useMemo, useRef } = React;
 
         // --- 圖標組件 ---
-        const IconWallet = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-        );
-        const IconTrendingUp = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-        );
-        const IconTrendingDown = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
-        );
-        const IconPieChart = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
-        );
-        const IconAlertTriangle = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        );
-        const IconCheckCircle = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        );
-        const IconDollarSign = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        );
-        const IconPlus = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        );
-        const IconTrash = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-        );
-        const IconChevronUp = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-        );
-        const IconChevronDown = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        );
-        const IconSave = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        );
-        const IconRefreshCw = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        );
-        const IconDownload = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        );
-        const IconUpload = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        );
-        const IconActivity = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        );
+        const IconWallet = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>);
+        const IconTrendingUp = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>);
+        const IconTrendingDown = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>);
+        const IconPieChart = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>);
+        const IconAlertTriangle = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
+        const IconCheckCircle = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>);
+        const IconDollarSign = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
+        const IconPlus = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
+        const IconTrash = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>);
+        const IconChevronUp = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>);
+        const IconChevronDown = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>);
+        const IconSave = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>);
+        const IconRefreshCw = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>);
+        const IconDownload = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
+        const IconUpload = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>);
+        const IconActivity = ({ size = 24, className = "" }) => (<svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>);
+
+        // --- 特製：千分位數字輸入元件 ---
+        const NumberFormatInput = ({ value, onChange, className, placeholder }) => {
+            const [displayVal, setDisplayVal] = useState(() => {
+                if (value === null || value === undefined) return '';
+                return formatStr(value.toString());
+            });
+
+            function formatStr(str) {
+                if (!str) return '';
+                const parts = str.toString().split('.');
+                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                return parts.join('.');
+            }
+
+            // 當外部數值改變時(例如同步最新股價、讀取存檔)，更新輸入框顯示
+            useEffect(() => {
+                const rawCurrent = displayVal.replace(/,/g, '');
+                const numCurrent = parseFloat(rawCurrent);
+                const valNum = parseFloat(value);
+                
+                if (isNaN(numCurrent)) {
+                    if (valNum !== 0 && !isNaN(valNum)) {
+                        setDisplayVal(formatStr(valNum.toString()));
+                    }
+                } else if (valNum !== numCurrent && !isNaN(valNum)) {
+                    setDisplayVal(formatStr(valNum.toString()));
+                }
+            }, [value]);
+
+            const handleChange = (e) => {
+                const raw = e.target.value.replace(/,/g, '');
+                // 僅允許輸入數字與小數點
+                if (raw !== '' && !/^-?\d*\.?\d*$/.test(raw)) return;
+
+                setDisplayVal(formatStr(raw));
+                // 為了兼容原本的 onChange(e => e.target.value)
+                const num = raw === '' || raw === '-' ? '' : parseFloat(raw);
+                onChange({ target: { value: num } });
+            };
+
+            const handleBlur = () => {
+                const raw = displayVal.replace(/,/g, '');
+                if (raw === '' || raw === '-') {
+                    setDisplayVal('0');
+                    onChange({ target: { value: 0 } });
+                } else {
+                    setDisplayVal(formatStr(parseFloat(raw).toString()));
+                }
+            };
+
+            return (
+                <input
+                    type="text"
+                    inputMode="decimal"
+                    value={displayVal}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    className={className}
+                    placeholder={placeholder}
+                />
+            );
+        };
+
 
         const FinancialPlanner = () => {
           const [activeTab, setActiveTab] = useState('dashboard');
@@ -158,7 +187,7 @@
             const totalFixedAssets = assets.fixedAssetsList.reduce((sum, item) => sum + item.amount, 0);
             const insuranceAndFixedTotalTWD = insuranceTotalTWD + totalFixedAssets;
 
-            // 投資部位總計僅包含 證券資產 (TWD)
+            // 投資部位總計僅包含證券資產 (TWD)
             const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal;
             
             // 總資產 = 現金 + 投資(證券) + 保險 + 固定資產
@@ -315,7 +344,7 @@
                     <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 text-sm w-full md:w-auto">
                       <IconDollarSign size={16} className="text-blue-600" />
                       <span>匯率 (USD/TWD):</span>
-                      <input type="number" value={usdRate} onChange={e => setUsdRate(Number(e.target.value)||0)} className="w-16 px-1 border rounded bg-white text-right font-medium" />
+                      <NumberFormatInput value={usdRate} onChange={e => setUsdRate(Number(e.target.value)||0)} className="w-16 px-1 border rounded bg-white text-right font-medium outline-none focus:border-blue-400" />
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                       <button onClick={handleExport} className="flex-1 text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1"><IconDownload size={14}/> 匯出備份</button>
@@ -431,7 +460,7 @@
                                             {assets.cashAccounts.map((item, idx) => (
                                                 <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500">
                                                     <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'name', e.target.value)} className="flex-1 bg-transparent text-sm font-medium outline-none" placeholder="帳戶名稱" />
-                                                    <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'amount', e.target.value)} className="w-24 text-right text-sm font-bold outline-none" />
+                                                    <NumberFormatInput value={item.amount} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'amount', e.target.value)} className="w-24 text-right text-sm font-bold outline-none" />
                                                     <button onClick={() => handleRemoveItem('assets', 'cashAccounts', item.id)} disabled={assets.cashAccounts.length<=1} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                 </div>
                                             ))}
@@ -455,7 +484,7 @@
                                                             <select value={item.currency} onChange={e => handleItemChange('assets', 'insurances', item.id, 'currency', e.target.value)} className="text-[10px] border rounded p-1 outline-none">
                                                                 <option value="TWD">TWD</option><option value="USD">USD</option>
                                                             </select>
-                                                            <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'insurances', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold outline-none" />
+                                                            <NumberFormatInput value={item.amount} onChange={e => handleItemChange('assets', 'insurances', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold outline-none" />
                                                             <button onClick={() => handleRemoveItem('assets', 'insurances', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                         </div>
                                                     ))}
@@ -470,7 +499,7 @@
                                                     {assets.fixedAssetsList.map(item => (
                                                         <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
                                                             <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'name', e.target.value)} className="flex-1 bg-transparent font-medium outline-none" placeholder="項目" />
-                                                            <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold outline-none" />
+                                                            <NumberFormatInput value={item.amount} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold outline-none" />
                                                             <button onClick={() => handleRemoveItem('assets', 'fixedAssetsList', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                         </div>
                                                     ))}
@@ -506,8 +535,8 @@
                                                                     <button onClick={() => handleRemoveItem('assets', block.list, item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={12}/></button>
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-gray-500">
-                                                                    <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', block.list, item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1" /><span>股 ×</span>
-                                                                    <input type="number" value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>元</span>
+                                                                    <NumberFormatInput value={item.shares} onChange={e=>handleItemChange('assets', block.list, item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1 outline-none focus:border-blue-400" /><span>股 ×</span>
+                                                                    <NumberFormatInput value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1 outline-none focus:border-blue-400" /><span>元</span>
                                                                     <span className="ml-auto font-bold text-gray-800">{formatCurrency(item.shares*item.price)}</span>
                                                                 </div>
                                                             </div>
@@ -537,8 +566,8 @@
                                                                 <button onClick={() => handleRemoveItem('assets', 'usStocks', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={12}/></button>
                                                             </div>
                                                             <div className="flex items-center gap-1 text-gray-500">
-                                                                <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1" /><span>股 ×</span>
-                                                                <input type="number" value={item.price} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>$</span>
+                                                                <NumberFormatInput value={item.shares} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1 outline-none focus:border-blue-400" /><span>股 ×</span>
+                                                                <NumberFormatInput value={item.price} onChange={e=>handleItemChange('assets', 'usStocks', item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1 outline-none focus:border-blue-400" /><span>$</span>
                                                                 <span className="ml-auto font-bold text-gray-800">{formatUSD(item.shares*item.price)}</span>
                                                             </div>
                                                         </div>
@@ -561,9 +590,9 @@
                                             </div>
                                             <div className="space-y-2">
                                                 {liabilities.creditCards.map(item => (
-                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm focus-within:ring-1 focus-within:ring-red-400">
                                                         <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
-                                                        <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold text-red-600 outline-none" />
+                                                        <NumberFormatInput value={item.amount} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-red-600 outline-none" />
                                                         <button onClick={() => handleRemoveItem('liabilities', 'creditCards', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                     </div>
                                                 ))}
@@ -575,9 +604,9 @@
                                             </div>
                                             <div className="space-y-2">
                                                 {liabilities.loans.map(item => (
-                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm focus-within:ring-1 focus-within:ring-red-400">
                                                         <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
-                                                        <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold outline-none" />
+                                                        <NumberFormatInput value={item.amount} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-gray-700 outline-none" />
                                                         <button onClick={() => handleRemoveItem('liabilities', 'loans', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                     </div>
                                                 ))}
@@ -599,9 +628,9 @@
                                     </div>
                                     <div className="space-y-2">
                                         {cashFlow.income.map(item => (
-                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm focus-within:ring-1 focus-within:ring-green-400">
                                                 <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'name', e.target.value)} className="flex-1 outline-none font-medium" placeholder="來源" />
-                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'amount', e.target.value)} className="w-20 text-right font-black text-green-700 outline-none" />
+                                                <NumberFormatInput value={item.amount} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'amount', e.target.value)} className="w-24 text-right font-black text-green-700 outline-none" />
                                                 <button onClick={() => handleRemoveItem('cashFlow', 'income', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                             </div>
                                         ))}
@@ -611,11 +640,11 @@
                                     <div className="flex justify-between items-center mb-4 border-b border-orange-200 pb-2 font-bold text-orange-900">
                                         <span>月支出項目</span><button onClick={() => handleAddItem('cashFlow', 'expenses', { name: '', amount: 0 })} className="text-[10px] bg-white px-2 py-1 rounded">+新增</button>
                                     </div>
-                                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                                         {cashFlow.expenses.map(item => (
-                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm focus-within:ring-1 focus-within:ring-orange-400">
                                                 <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
-                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold text-orange-700 outline-none" />
+                                                <NumberFormatInput value={item.amount} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-orange-700 outline-none" />
                                                 <button onClick={() => handleRemoveItem('cashFlow', 'expenses', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                             </div>
                                         ))}

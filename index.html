@@ -17,6 +17,8 @@
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
         .progress-bar { transition: width 0.5s ease-in-out; }
+        .sync-loading { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -87,7 +89,7 @@
             return saved !== null ? Number(saved) : 31.5;
           });
 
-          // 1. 資產預設狀態 (歸零適合新用戶)
+          // 1. 資產預設狀態
           const defaultAssets = {
             cashAccounts: [{ id: 1, name: '主要銀行存款', amount: 0 }],
             twStocks: [],
@@ -162,9 +164,8 @@
             const totalExpenses = cashFlow.expenses.reduce((sum, item) => sum + item.amount, 0);
             const monthlyNet = totalIncome - totalExpenses;
 
-            // 顧問版新增指標
             const emergencyFundMonths = totalExpenses > 0 ? (totalCash / totalExpenses).toFixed(1) : 0;
-            const debtToIncomeRatio = totalIncome > 0 ? ((cashFlow.expenses.find(e => e.name.includes('貸款'))?.amount || 0) / totalIncome * 100).toFixed(1) : 0;
+            const debtToIncomeRatio = totalIncome > 0 ? (totalLoans / totalIncome * 100).toFixed(1) : 0;
             const savingsRate = totalIncome > 0 ? (monthlyNet / totalIncome * 100).toFixed(1) : 0;
             const investmentRatio = totalAssets > 0 ? (totalInvestments / totalAssets * 100).toFixed(1) : 0;
 
@@ -184,19 +185,16 @@
           const actionPlans = useMemo(() => {
             const plans = [];
             if (calculations.totalCreditCards > 0) {
-              plans.push({ title: "優先清理高息債務", desc: `信用卡未繳金額為 ${formatCurrency(calculations.totalCreditCards)}。信用卡利息通常大於 10%，任何投資回報都很難超過它，請立即結清。` });
+              plans.push({ title: "優先清理高息債務", desc: `信用卡未繳金額為 ${formatCurrency(calculations.totalCreditCards)}。信用卡利息極高，請立即結清。` });
             }
             if (calculations.monthlyNet < 0) {
-              plans.push({ title: "調整收支平衡", desc: `每月支出超出收入 ${formatCurrency(Math.abs(calculations.monthlyNet))}。建議檢視「想要」類別的支出，先讓現金流轉正。` });
+              plans.push({ title: "調整收支平衡", desc: `每月支出超出收入 ${formatCurrency(Math.abs(calculations.monthlyNet))}。建議檢視支出項目。` });
             } else {
                 if (calculations.emergencyFundMonths < 6) {
-                    plans.push({ title: "補足緊急預備金", desc: `目前現金可支撐 ${calculations.emergencyFundMonths} 個月生活，建議目標存滿 6 個月 (${formatCurrency(calculations.totalExpenses * 6)})。` });
+                    plans.push({ title: "補足緊急預備金", desc: `目前現金可支撐 ${calculations.emergencyFundMonths} 個月生活，建議目標存滿 6 個月。` });
                 } else {
-                    plans.push({ title: "優化資產配置", desc: "預備金已充足，建議將每月結餘投入優質 ETF 或股票，增加被動收入來源。" });
+                    plans.push({ title: "優化資產配置", desc: "預備金已充足，建議優化投資組合增加被動收入。" });
                 }
-            }
-            if (calculations.debtToIncomeRatio > 30) {
-                plans.push({ title: "降低債務負擔比", desc: `目前的還貸比率為 ${calculations.debtToIncomeRatio}%，超過健康紅線 (30%)。應考慮加速還本或降低生活開支。` });
             }
             return plans;
           }, [calculations]);
@@ -227,28 +225,47 @@
             reader.readAsText(file);
           };
 
-          // --- 股價同步 ---
+          // --- 股價同步 (升級版：自動判斷 .TW 或 .TWO) ---
           const handleSyncPrices = async () => {
             setIsSyncing(true);
+            
+            const fetchFromYahoo = async (ticker) => {
+                try {
+                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`)}`);
+                    const d = JSON.parse((await res.json()).contents);
+                    return d.chart?.result?.[0]?.meta?.regularMarketPrice || null;
+                } catch { return null; }
+            };
+
             const fetchPrice = async (item, isTw) => {
                 let ticker = (item.ticker || '').trim().toUpperCase();
                 if (!ticker && /^[A-Z0-9.]+$/i.test(item.name.trim())) ticker = item.name.trim().toUpperCase();
                 if (!ticker) return item;
-                if (isTw && /^\d+$/.test(ticker)) ticker += '.TW';
-                try {
-                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`)}`);
-                    const d = JSON.parse((await res.json()).contents);
-                    const price = d.chart?.result?.[0]?.meta?.regularMarketPrice;
+
+                // 如果是台股且為純數字
+                if (isTw && /^\d+$/.test(ticker)) {
+                    // 策略：先試上市(.TW)，若沒抓到再試上櫃(.TWO)
+                    let price = await fetchFromYahoo(`${ticker}.TW`);
+                    if (!price) {
+                        price = await fetchFromYahoo(`${ticker}.TWO`);
+                    }
                     return price ? { ...item, price: Number(price.toFixed(2)) } : item;
-                } catch { return item; }
+                } else {
+                    // 美股或已帶後綴的代號
+                    const price = await fetchFromYahoo(ticker);
+                    return price ? { ...item, price: Number(price.toFixed(2)) } : item;
+                }
             };
+
             const [tw, etfs, us] = await Promise.all([
                 Promise.all(assets.twStocks.map(i => fetchPrice(i, true))),
                 Promise.all(assets.etfs.map(i => fetchPrice(i, true))),
                 Promise.all(assets.usStocks.map(i => fetchPrice(i, false)))
             ]);
+            
             setAssets(prev => ({ ...prev, twStocks: tw, etfs, usStocks: us }));
             setIsSyncing(false);
+            showToast("股價更新完成！");
           };
 
           // --- 通用狀態處理 ---
@@ -290,7 +307,6 @@
               )}
               
               <div className="max-w-6xl mx-auto space-y-6">
-                {/* 頂部控制列 */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm">
                   <div>
                     <div className="flex items-center gap-3">
@@ -313,7 +329,6 @@
                   </div>
                 </div>
 
-                {/* 核心卡片 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-blue-500">
                         <p className="text-xs font-medium text-gray-500 mb-1">總資產</p>
@@ -333,7 +348,6 @@
                     </div>
                 </div>
 
-                {/* 標籤頁 */}
                 <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200">
                     <div className="flex border-b overflow-x-auto">
                         <TabButton id="dashboard" label="綜合看板" icon={IconPieChart} />
@@ -343,56 +357,39 @@
                     </div>
 
                     <div className="p-6">
-                        {/* 綜合看板內容 */}
                         {activeTab === 'dashboard' && (
                             <div className="space-y-8 animate-in fade-in duration-300">
-                                {/* 專業健康指標 */}
                                 <section>
                                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><IconActivity className="text-blue-500"/> 財務健康度儀表板</h3>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                            <p className="text-xs text-gray-500">緊急預備金</p>
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <span className="text-2xl font-bold text-gray-800">{calculations.emergencyFundMonths}</span>
-                                                <span className="text-sm text-gray-500">個月</span>
-                                            </div>
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
+                                            <p className="text-xs text-gray-500">預備金月數</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.emergencyFundMonths} 個月</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.emergencyFundMonths >= 6 ? 'bg-green-500' : 'bg-yellow-500'}`} style={{ width: `${Math.min(calculations.emergencyFundMonths * 16.6, 100)}%` }}></div>
                                             </div>
-                                            <p className="text-[10px] text-gray-400 mt-1">建議目標: 6 個月</p>
                                         </div>
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
                                             <p className="text-xs text-gray-500">儲蓄率</p>
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <span className="text-2xl font-bold text-gray-800">{calculations.savingsRate}%</span>
-                                            </div>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.savingsRate}%</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.savingsRate >= 20 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.max(0, Math.min(calculations.savingsRate, 100))}%` }}></div>
                                             </div>
-                                            <p className="text-[10px] text-gray-400 mt-1">健康門檻: 20%</p>
                                         </div>
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                            <p className="text-xs text-gray-500">債務負擔比</p>
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <span className="text-2xl font-bold text-gray-800">{calculations.debtToIncomeRatio}%</span>
-                                            </div>
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
+                                            <p className="text-xs text-gray-500">負債負擔比</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.debtToIncomeRatio}%</p>
                                             <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2">
                                                 <div className={`h-1.5 rounded-full progress-bar ${calculations.debtToIncomeRatio <= 30 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.min(calculations.debtToIncomeRatio, 100)}%` }}></div>
                                             </div>
-                                            <p className="text-[10px] text-gray-400 mt-1">警示線: 30%</p>
                                         </div>
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                            <p className="text-xs text-gray-500">資產投資佔比</p>
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <span className="text-2xl font-bold text-gray-800">{calculations.investmentRatio}%</span>
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center">
+                                            <p className="text-xs text-gray-500">投資佔比</p>
+                                            <p className="text-2xl font-bold text-gray-800 mt-1">{calculations.investmentRatio}%</p>
+                                            <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 flex">
+                                                <div style={{ width: `${calculations.investmentRatio}%` }} className="h-full bg-blue-500"></div>
+                                                <div style={{ width: `${100-calculations.investmentRatio}%` }} className="h-full bg-orange-300"></div>
                                             </div>
-                                            <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 text-xs">
-                                                <div className="flex h-1.5 overflow-hidden rounded-full">
-                                                    <div style={{ width: `${calculations.investmentRatio}%` }} className="bg-blue-500"></div>
-                                                    <div style={{ width: `${100-calculations.investmentRatio}%` }} className="bg-orange-300"></div>
-                                                </div>
-                                            </div>
-                                            <p className="text-[10px] text-gray-400 mt-1">藍色為投資、橙色為現金與固定資產</p>
                                         </div>
                                     </div>
                                 </section>
@@ -400,37 +397,24 @@
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div className="bg-amber-50 p-6 rounded-xl border border-amber-200">
                                         <h3 className="font-bold text-amber-900 mb-4 flex items-center gap-2"><IconAlertTriangle size={18}/> 顧問診斷</h3>
-                                        <ul className="space-y-4 text-sm text-amber-800">
-                                            <li className="flex items-start gap-2">
-                                                <div className={`mt-1 p-0.5 rounded-full ${calculations.monthlyNet >= 0 ? 'bg-green-200 text-green-700' : 'bg-red-200 text-red-700'}`}>
-                                                    {calculations.monthlyNet >= 0 ? <IconCheckCircle size={14}/> : <IconAlertTriangle size={14}/>}
-                                                </div>
-                                                <span>{calculations.monthlyNet >= 0 ? `目前每月可存下 ${formatCurrency(calculations.monthlyNet)}。` : `每月入不敷出，每月虧損 ${formatCurrency(Math.abs(calculations.monthlyNet))}。`}</span>
+                                        <ul className="space-y-3 text-sm text-amber-800">
+                                            <li className="flex items-center gap-2">
+                                                {calculations.totalCreditCards === 0 ? <IconCheckCircle size={16} className="text-green-600"/> : <IconAlertTriangle size={16} className="text-red-600"/>}
+                                                {calculations.totalCreditCards === 0 ? "無信用卡欠款，信用良好。" : `有 ${formatCurrency(calculations.totalCreditCards)} 的信用卡欠款，請優先處理。`}
                                             </li>
-                                            <li className="flex items-start gap-2">
-                                                <div className={`mt-1 p-0.5 rounded-full ${calculations.totalCreditCards === 0 ? 'bg-green-200 text-green-700' : 'bg-red-200 text-red-700'}`}>
-                                                    {calculations.totalCreditCards === 0 ? <IconCheckCircle size={14}/> : <IconAlertTriangle size={14}/>}
-                                                </div>
-                                                <span>{calculations.totalCreditCards === 0 ? '無信用卡壞債。' : `信用卡債務達 ${formatCurrency(calculations.totalCreditCards)}。`}</span>
-                                            </li>
-                                            <li className="flex items-start gap-2">
-                                                <div className={`mt-1 p-0.5 rounded-full ${calculations.emergencyFundMonths >= 6 ? 'bg-green-200 text-green-700' : 'bg-yellow-200 text-yellow-700'}`}>
-                                                    {calculations.emergencyFundMonths >= 6 ? <IconCheckCircle size={14}/> : <IconAlertTriangle size={14}/>}
-                                                </div>
-                                                <span>{calculations.emergencyFundMonths >= 6 ? '預備金充足。' : '預備金水位不足。'}</span>
+                                            <li className="flex items-center gap-2">
+                                                {calculations.emergencyFundMonths >= 6 ? <IconCheckCircle size={16} className="text-green-600"/> : <IconAlertTriangle size={16} className="text-yellow-600"/>}
+                                                {calculations.emergencyFundMonths >= 6 ? "預備金充足，可承擔 6 個月以上支出。" : "預備金水位不足 6 個月，建議先存錢。"}
                                             </li>
                                         </ul>
                                     </div>
                                     <div className="bg-green-50 p-6 rounded-xl border border-green-200">
-                                        <h3 className="font-bold text-green-900 mb-4 flex items-center gap-2"><IconTrendingUp size={18}/> 理財行動指南</h3>
-                                        <ol className="space-y-4">
+                                        <h3 className="font-bold text-green-900 mb-4 flex items-center gap-2"><IconTrendingUp size={18}/> 理財行動建議</h3>
+                                        <ol className="space-y-3">
                                             {actionPlans.map((plan, i) => (
-                                                <li key={i} className="flex gap-3">
-                                                    <span className="shrink-0 w-5 h-5 bg-green-200 text-green-800 rounded-full flex items-center justify-center text-xs font-bold">{i+1}</span>
-                                                    <div>
-                                                        <p className="text-sm font-bold text-green-900">{plan.title}</p>
-                                                        <p className="text-xs text-green-800 mt-0.5 leading-relaxed">{plan.desc}</p>
-                                                    </div>
+                                                <li key={i} className="flex gap-2 text-sm text-green-800">
+                                                    <span className="font-bold">{i+1}.</span>
+                                                    <div><strong>{plan.title}</strong>：{plan.desc}</div>
                                                 </li>
                                             ))}
                                         </ol>
@@ -439,44 +423,34 @@
                             </div>
                         )}
 
-                        {/* 資產明細 */}
                         {activeTab === 'assets' && (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-300">
                                 <div className="space-y-6">
                                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h4 className="font-bold flex items-center gap-2">現金帳戶 <span className="text-xs font-normal text-gray-500">小計: {formatCurrency(calculations.totalCash)}</span></h4>
+                                            <h4 className="font-bold">現金帳戶 <span className="text-xs font-normal text-gray-500">({formatCurrency(calculations.totalCash)})</span></h4>
                                             <button onClick={() => handleAddItem('assets', 'cashAccounts', { name: '', amount: 0 })} className="text-blue-600 text-xs flex items-center gap-1"><IconPlus size={12}/>新增</button>
                                         </div>
                                         <div className="space-y-2">
                                             {assets.cashAccounts.map((item, idx) => (
-                                                <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-                                                    <div className="flex flex-col shrink-0">
-                                                        <button onClick={() => handleMoveItem('assets', 'cashAccounts', idx, 'up')} className="text-gray-300 hover:text-blue-500"><IconChevronUp size={14}/></button>
-                                                        <button onClick={() => handleMoveItem('assets', 'cashAccounts', idx, 'down')} className="text-gray-300 hover:text-blue-500"><IconChevronDown size={14}/></button>
-                                                    </div>
+                                                <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border focus-within:ring-1 focus-within:ring-blue-500">
                                                     <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'name', e.target.value)} className="flex-1 bg-transparent text-sm font-medium outline-none" placeholder="帳戶名稱" />
-                                                    <div className="flex items-center gap-1 border-l pl-2">
-                                                        <span className="text-gray-400 text-xs">$</span>
-                                                        <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'amount', e.target.value)} className="w-24 text-right text-sm font-bold outline-none" />
-                                                        <button onClick={() => handleRemoveItem('assets', 'cashAccounts', item.id)} disabled={assets.cashAccounts.length<=1} className="text-gray-300 hover:text-red-500 p-1"><IconTrash size={14}/></button>
-                                                    </div>
+                                                    <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'cashAccounts', item.id, 'amount', e.target.value)} className="w-24 text-right text-sm font-bold outline-none" />
+                                                    <button onClick={() => handleRemoveItem('assets', 'cashAccounts', item.id)} disabled={assets.cashAccounts.length<=1} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h4 className="font-bold flex items-center gap-2">保險與固定資產</h4>
-                                        </div>
+                                        <h4 className="font-bold mb-4">保險與固定資產</h4>
                                         <div className="space-y-6">
                                             <div>
-                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">具現價保單 (儲蓄險/美金單)</p><button onClick={() => handleAddItem('assets', 'insurances', { name: '', amount: 0, currency: 'TWD' })} className="text-blue-600 text-[10px]">+新增</button></div>
+                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">現價保單</p><button onClick={() => handleAddItem('assets', 'insurances', { name: '', amount: 0, currency: 'TWD' })} className="text-blue-600 text-[10px]">+新增</button></div>
                                                 <div className="space-y-2">
                                                     {assets.insurances.map(item => (
                                                         <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
-                                                            <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'insurances', item.id, 'name', e.target.value)} className="flex-1 bg-transparent font-medium outline-none" placeholder="保單名稱" />
-                                                            <select value={item.currency} onChange={e => handleItemChange('assets', 'insurances', item.id, 'currency', e.target.value)} className="text-[10px] border rounded bg-gray-50 p-1 outline-none">
+                                                            <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'insurances', item.id, 'name', e.target.value)} className="flex-1 bg-transparent font-medium outline-none" placeholder="名稱" />
+                                                            <select value={item.currency} onChange={e => handleItemChange('assets', 'insurances', item.id, 'currency', e.target.value)} className="text-[10px] border rounded p-1 outline-none">
                                                                 <option value="TWD">TWD</option><option value="USD">USD</option>
                                                             </select>
                                                             <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'insurances', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold outline-none" />
@@ -486,11 +460,11 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">固定資產 (房產/車子)</p><button onClick={() => handleAddItem('assets', 'fixedAssetsList', { name: '', amount: 0 })} className="text-blue-600 text-[10px]">+新增</button></div>
+                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">固定資產 (房/車)</p><button onClick={() => handleAddItem('assets', 'fixedAssetsList', { name: '', amount: 0 })} className="text-blue-600 text-[10px]">+新增</button></div>
                                                 <div className="space-y-2">
                                                     {assets.fixedAssetsList.map(item => (
                                                         <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
-                                                            <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'name', e.target.value)} className="flex-1 bg-transparent font-medium outline-none" placeholder="項目名稱" />
+                                                            <input type="text" value={item.name} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'name', e.target.value)} className="flex-1 bg-transparent font-medium outline-none" placeholder="項目" />
                                                             <input type="number" value={item.amount} onChange={e => handleItemChange('assets', 'fixedAssetsList', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold outline-none" />
                                                             <button onClick={() => handleRemoveItem('assets', 'fixedAssetsList', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                         </div>
@@ -503,18 +477,15 @@
 
                                 <div className="space-y-6">
                                     <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
-                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-                                            <h4 className="font-bold flex items-center gap-2">投資部位 <button onClick={handleSyncPrices} disabled={isSyncing} className="text-[10px] px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 transition-all">{isSyncing ? <IconRefreshCw size={10} className="animate-spin"/> : <IconRefreshCw size={10}/>} 一鍵同步股價</button></h4>
-                                            <span className="text-xs font-bold text-blue-700 px-3 py-1 bg-blue-100 rounded-full">總計: {formatCurrency(calculations.totalInvestments)}</span>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="font-bold flex items-center gap-2">投資部位 <button onClick={handleSyncPrices} disabled={isSyncing} className={`text-[10px] px-2 py-1 rounded bg-blue-600 text-white flex items-center gap-1 ${isSyncing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}>{isSyncing ? <IconRefreshCw size={10} className="sync-loading"/> : <IconRefreshCw size={10}/>} 一鍵同步</button></h4>
+                                            <span className="text-xs font-bold text-blue-700">總計: {formatCurrency(calculations.totalInvestments)}</span>
                                         </div>
                                         
+                                        <p className="text-[10px] text-blue-500 mb-4 bg-white p-2 rounded border border-blue-100 italic">💡 提示：輸入代號 5498，系統會自動幫你檢查上市(.TW)與上櫃(.TWO)資料。</p>
+
                                         <div className="space-y-6">
-                                            {/* 台股/ETF 通用區塊渲染 */}
-                                            {[
-                                                { label: '台股', list: 'twStocks',小計: calculations.twStockTotal, tickerDef: '2330' },
-                                                { label: 'ETF', list: 'etfs', 小計: calculations.etfTotal, tickerDef: '0050' },
-                                                { label: '美股', list: 'usStocks', 小計: calculations.usStockTotalTWD, tickerDef: 'AAPL', unit: '$' }
-                                            ].map(block => (
+                                            {[{ label: '台股', list: 'twStocks',小計: calculations.twStockTotal, def: '2330' }, { label: 'ETF', list: 'etfs', 小計: calculations.etfTotal, def: '0050' }, { label: '美股', list: 'usStocks', 小計: calculations.usStockTotalTWD, def: 'AAPL', unit: '$' }].map(block => (
                                                 <div key={block.list}>
                                                     <div className="flex justify-between items-center border-b pb-1 mb-2">
                                                         <p className="text-xs text-gray-500 font-bold">{block.label} <span className="font-normal">(小計: {formatCurrency(block.小計)})</span></p>
@@ -522,20 +493,17 @@
                                                     </div>
                                                     <div className="space-y-2">
                                                         {assets[block.list].map((item, idx) => (
-                                                            <div key={item.id} className="bg-white p-2 rounded border text-xs shadow-sm flex items-center gap-2">
-                                                                <div className="flex flex-col">
-                                                                    <button onClick={() => handleMoveItem('assets', block.list, idx, 'up')} className="text-gray-300 hover:text-blue-500"><IconChevronUp size={12}/></button>
-                                                                    <button onClick={() => handleMoveItem('assets', block.list, idx, 'down')} className="text-gray-300 hover:text-blue-500"><IconChevronDown size={12}/></button>
+                                                            <div key={item.id} className="bg-white p-2 rounded border text-xs shadow-sm space-y-1">
+                                                                <div className="flex gap-2">
+                                                                    <input type="text" value={item.name} onChange={e=>handleItemChange('assets', block.list, item.id, 'name', e.target.value)} className="font-bold w-1/2 outline-none border-b border-transparent focus:border-blue-200" placeholder="名稱"/>
+                                                                    <input type="text" value={item.ticker} onChange={e=>handleItemChange('assets', block.list, item.id, 'ticker', e.target.value)} className="w-1/2 text-blue-600 font-mono outline-none border-b border-transparent focus:border-blue-200" placeholder={`代號(${block.def})`}/>
+                                                                    <button onClick={() => handleRemoveItem('assets', block.list, item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={12}/></button>
                                                                 </div>
-                                                                <div className="flex-1 space-y-1">
-                                                                    <div className="flex gap-1"><input type="text" value={item.name} onChange={e=>handleItemChange('assets', block.list, item.id, 'name', e.target.value)} className="font-bold w-1/2 outline-none" placeholder="名稱"/><input type="text" value={item.ticker} onChange={e=>handleItemChange('assets', block.list, item.id, 'ticker', e.target.value)} className="w-1/2 text-blue-600 font-mono outline-none" placeholder={`代號(${block.tickerDef})`}/></div>
-                                                                    <div className="flex items-center gap-1 text-gray-500">
-                                                                        <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', block.list, item.id, 'shares', e.target.value)} className="w-16 border rounded text-right px-1 outline-none" /><span>股 ×</span>
-                                                                        <input type="number" value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-16 border rounded text-right px-1 outline-none" step="0.01" /><span>{block.unit || '元'}</span>
-                                                                        <span className="ml-auto font-bold text-gray-800">{block.unit==='$' ? formatUSD(item.shares*item.price) : formatCurrency(item.shares*item.price)}</span>
-                                                                    </div>
+                                                                <div className="flex items-center gap-1 text-gray-500">
+                                                                    <input type="number" value={item.shares} onChange={e=>handleItemChange('assets', block.list, item.id, 'shares', e.target.value)} className="w-14 border rounded text-right px-1" /><span>股 ×</span>
+                                                                    <input type="number" value={item.price} onChange={e=>handleItemChange('assets', block.list, item.id, 'price', e.target.value)} className="w-14 border rounded text-right px-1" step="0.01" /><span>{block.unit || '元'}</span>
+                                                                    <span className="ml-auto font-bold text-gray-800">{block.unit==='$' ? formatUSD(item.shares*item.price) : formatCurrency(item.shares*item.price)}</span>
                                                                 </div>
-                                                                <button onClick={() => handleRemoveItem('assets', block.list, item.id)} className="text-gray-300 hover:text-red-500 shrink-0"><IconTrash size={14}/></button>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -547,100 +515,78 @@
                             </div>
                         )}
 
-                        {/* 負債明細 */}
                         {activeTab === 'liabilities' && (
                             <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
                                 <div className="bg-red-50 p-6 rounded-2xl border border-red-100">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div>
-                                            <div className="flex justify-between items-center mb-4 border-b border-red-200 pb-2">
-                                                <h4 className="font-bold text-red-800">信用卡與分期 <span className="text-xs font-normal opacity-70">小計: {formatCurrency(calculations.totalCreditCards)}</span></h4>
-                                                <button onClick={() => handleAddItem('liabilities', 'creditCards', { name: '', amount: 0 })} className="bg-white text-red-600 text-[10px] px-2 py-1 rounded border border-red-200 hover:bg-red-50">+新增項目</button>
+                                            <div className="flex justify-between items-center mb-4 border-b border-red-200 pb-2 font-bold text-red-800">
+                                                <span>信用卡項目</span><button onClick={() => handleAddItem('liabilities', 'creditCards', { name: '', amount: 0 })} className="text-[10px] bg-white px-2 py-1 rounded">+新增</button>
                                             </div>
-                                            <div className="space-y-3">
+                                            <div className="space-y-2">
                                                 {liabilities.creditCards.map(item => (
-                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                                                        <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'name', e.target.value)} className="flex-1 text-sm font-medium outline-none" placeholder="銀行項目" />
-                                                        <div className="flex items-center gap-2 border-l pl-3">
-                                                            <span className="text-red-400 text-xs">$</span>
-                                                            <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-red-600 outline-none" />
-                                                            <button onClick={() => handleRemoveItem('liabilities', 'creditCards', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={16}/></button>
-                                                        </div>
+                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                        <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
+                                                        <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'creditCards', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold text-red-600 outline-none" />
+                                                        <button onClick={() => handleRemoveItem('liabilities', 'creditCards', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                         <div>
-                                            <div className="flex justify-between items-center mb-4 border-b border-red-200 pb-2">
-                                                <h4 className="font-bold text-red-800">各類貸款項目 <span className="text-xs font-normal opacity-70">小計: {formatCurrency(calculations.totalLoans)}</span></h4>
-                                                <button onClick={() => handleAddItem('liabilities', 'loans', { name: '', amount: 0 })} className="bg-white text-red-600 text-[10px] px-2 py-1 rounded border border-red-200 hover:bg-red-50">+新增項目</button>
+                                            <div className="flex justify-between items-center mb-4 border-b border-red-200 pb-2 font-bold text-red-800">
+                                                <span>貸款項目</span><button onClick={() => handleAddItem('liabilities', 'loans', { name: '', amount: 0 })} className="text-[10px] bg-white px-2 py-1 rounded">+新增</button>
                                             </div>
-                                            <div className="space-y-3">
+                                            <div className="space-y-2">
                                                 {liabilities.loans.map(item => (
-                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                                                        <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'name', e.target.value)} className="flex-1 text-sm font-medium outline-none" placeholder="貸款名稱" />
-                                                        <div className="flex items-center gap-2 border-l pl-3">
-                                                            <span className="text-gray-400 text-xs">$</span>
-                                                            <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-gray-700 outline-none" />
-                                                            <button onClick={() => handleRemoveItem('liabilities', 'loans', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={16}/></button>
-                                                        </div>
+                                                    <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                        <input type="text" value={item.name} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
+                                                        <input type="number" value={item.amount} onChange={e => handleItemChange('liabilities', 'loans', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold outline-none" />
+                                                        <button onClick={() => handleRemoveItem('liabilities', 'loans', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-8 pt-6 border-t border-red-200 flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
-                                        <span className="font-bold text-red-900">總負債金額</span>
-                                        <span className="text-3xl font-black text-red-600">{formatCurrency(calculations.totalLiabilities)}</span>
+                                    <div className="mt-8 pt-6 border-t border-red-200 text-right">
+                                        <p className="text-sm text-red-500 font-medium">總負債: <span className="text-2xl font-black">{formatCurrency(calculations.totalLiabilities)}</span></p>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* 現金流內容 */}
                         {activeTab === 'cashflow' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
-                                <div className="bg-green-50 p-6 rounded-2xl border border-green-100 h-fit">
-                                    <div className="flex justify-between items-center mb-6 border-b border-green-200 pb-4">
-                                        <h4 className="font-bold text-green-900 text-lg">月收入預估 <span className="text-sm font-normal ml-2 opacity-70">{formatCurrency(calculations.totalIncome)}</span></h4>
-                                        <button onClick={() => handleAddItem('cashFlow', 'income', { name: '', amount: 0 })} className="text-green-600 text-xs flex items-center gap-1"><IconPlus size={12}/>新增項目</button>
+                                <div className="bg-green-50 p-6 rounded-2xl border border-green-100">
+                                    <div className="flex justify-between items-center mb-4 border-b border-green-200 pb-2 font-bold text-green-900">
+                                        <span>月收入項目</span><button onClick={() => handleAddItem('cashFlow', 'income', { name: '', amount: 0 })} className="text-[10px] bg-white px-2 py-1 rounded">+新增</button>
                                     </div>
-                                    <div className="space-y-3">
-                                        {cashFlow.income.map((item, idx) => (
-                                            <div key={item.id} className="flex items-center gap-2 bg-white p-3 rounded-xl border border-green-100 shadow-sm transition-all">
-                                                <div className="flex flex-col">
-                                                    <button onClick={() => handleMoveItem('cashFlow', 'income', idx, 'up')} className="text-gray-300 hover:text-green-500"><IconChevronUp size={14}/></button>
-                                                    <button onClick={() => handleMoveItem('cashFlow', 'income', idx, 'down')} className="text-gray-300 hover:text-green-500"><IconChevronDown size={14}/></button>
-                                                </div>
-                                                <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'name', e.target.value)} className="flex-1 text-sm font-bold outline-none" placeholder="來源名稱" />
-                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'amount', e.target.value)} className="w-24 text-right font-black text-green-700 outline-none" />
-                                                <button onClick={() => handleRemoveItem('cashFlow', 'income', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={16}/></button>
+                                    <div className="space-y-2">
+                                        {cashFlow.income.map(item => (
+                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'name', e.target.value)} className="flex-1 outline-none font-medium" placeholder="來源" />
+                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'income', item.id, 'amount', e.target.value)} className="w-20 text-right font-black text-green-700 outline-none" />
+                                                <button onClick={() => handleRemoveItem('cashFlow', 'income', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-
                                 <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
-                                    <div className="flex justify-between items-center mb-6 border-b border-orange-200 pb-4">
-                                        <h4 className="font-bold text-orange-900 text-lg">月支出預估 <span className="text-sm font-normal ml-2 opacity-70">{formatCurrency(calculations.totalExpenses)}</span></h4>
-                                        <button onClick={() => handleAddItem('cashFlow', 'expenses', { name: '', amount: 0 })} className="text-orange-600 text-xs flex items-center gap-1"><IconPlus size={12}/>新增項目</button>
+                                    <div className="flex justify-between items-center mb-4 border-b border-orange-200 pb-2 font-bold text-orange-900">
+                                        <span>月支出項目</span><button onClick={() => handleAddItem('cashFlow', 'expenses', { name: '', amount: 0 })} className="text-[10px] bg-white px-2 py-1 rounded">+新增</button>
                                     </div>
-                                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                                        {cashFlow.expenses.map((item, idx) => (
-                                            <div key={item.id} className="flex items-center gap-2 bg-white p-3 rounded-xl border border-orange-100 shadow-sm">
-                                                <div className="flex flex-col">
-                                                    <button onClick={() => handleMoveItem('cashFlow', 'expenses', idx, 'up')} className="text-gray-300 hover:text-orange-500"><IconChevronUp size={14}/></button>
-                                                    <button onClick={() => handleMoveItem('cashFlow', 'expenses', idx, 'down')} className="text-gray-300 hover:text-orange-500"><IconChevronDown size={14}/></button>
-                                                </div>
-                                                <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'name', e.target.value)} className="flex-1 text-sm font-medium outline-none" placeholder="項目名稱" />
-                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'amount', e.target.value)} className="w-24 text-right font-bold text-orange-700 outline-none" />
-                                                <button onClick={() => handleRemoveItem('cashFlow', 'expenses', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={16}/></button>
+                                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                        {cashFlow.expenses.map(item => (
+                                            <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
+                                                <input type="text" value={item.name} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'name', e.target.value)} className="flex-1 outline-none" placeholder="項目" />
+                                                <input type="number" value={item.amount} onChange={e => handleItemChange('cashFlow', 'expenses', item.id, 'amount', e.target.value)} className="w-20 text-right font-bold text-orange-700 outline-none" />
+                                                <button onClick={() => handleRemoveItem('cashFlow', 'expenses', item.id)} className="text-gray-300 hover:text-red-500"><IconTrash size={14}/></button>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className={`mt-6 p-4 rounded-xl border flex items-center justify-between shadow-inner ${calculations.monthlyNet >= 0 ? 'bg-green-100 border-green-200 text-green-800' : 'bg-red-100 border-red-200 text-red-800'}`}>
-                                        <span className="font-bold">每月結餘結果</span>
-                                        <span className="text-2xl font-black">{formatCurrency(calculations.monthlyNet)}</span>
+                                    <div className={`mt-6 p-4 rounded-xl border flex items-center justify-between ${calculations.monthlyNet >= 0 ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
+                                        <span className="font-bold text-sm">每月結餘</span>
+                                        <span className="text-xl font-black">{formatCurrency(calculations.monthlyNet)}</span>
                                     </div>
                                 </div>
                             </div>

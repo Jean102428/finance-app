@@ -149,13 +149,16 @@
             const usStockTotalTWD = usStockTotalUSD * usdRate;
             const etfTotal = assets.etfs.reduce((sum, etf) => sum + (etf.shares * etf.price), 0);
             
-            // 重要：修正保險與固定資產計算
+            // 保險與固定資產計算
             const insuranceTotalTWD = assets.insurances.reduce((sum, item) => sum + (item.currency === 'USD' ? item.amount * usdRate : item.amount), 0);
             const totalFixedAssets = assets.fixedAssetsList.reduce((sum, item) => sum + item.amount, 0);
             const insuranceAndFixedTotalTWD = insuranceTotalTWD + totalFixedAssets;
 
-            const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal + insuranceTotalTWD;
-            const totalAssets = totalCash + totalInvestments + totalFixedAssets;
+            // 修正：投資部位總計僅包含 證券資產
+            const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal;
+            
+            // 總資產 = 現金 + 投資(證券) + 保險 + 固定資產
+            const totalAssets = totalCash + totalInvestments + insuranceTotalTWD + totalFixedAssets;
 
             const totalCreditCards = liabilities.creditCards.reduce((sum, item) => sum + item.amount, 0);
             const totalLoans = liabilities.loans.reduce((sum, item) => sum + item.amount, 0);
@@ -435,7 +438,6 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 修正：保險與固定資產 UI 顯示 */}
                                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
                                         <div className="flex justify-between items-center mb-4">
                                             <h4 className="font-bold">保險與固定資產 <span className="text-xs font-normal text-gray-500">({formatCurrency(calculations.insuranceAndFixedTotalTWD)})</span></h4>

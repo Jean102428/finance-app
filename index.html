@@ -148,8 +148,11 @@
             const usStockTotalUSD = assets.usStocks.reduce((sum, stock) => sum + (stock.shares * stock.price), 0);
             const usStockTotalTWD = usStockTotalUSD * usdRate;
             const etfTotal = assets.etfs.reduce((sum, etf) => sum + (etf.shares * etf.price), 0);
+            
+            // 重要：修正保險與固定資產計算
             const insuranceTotalTWD = assets.insurances.reduce((sum, item) => sum + (item.currency === 'USD' ? item.amount * usdRate : item.amount), 0);
             const totalFixedAssets = assets.fixedAssetsList.reduce((sum, item) => sum + item.amount, 0);
+            const insuranceAndFixedTotalTWD = insuranceTotalTWD + totalFixedAssets;
 
             const totalInvestments = twStockTotal + usStockTotalTWD + etfTotal + insuranceTotalTWD;
             const totalAssets = totalCash + totalInvestments + totalFixedAssets;
@@ -170,7 +173,7 @@
             const investmentRatio = totalAssets > 0 ? (totalInvestments / totalAssets * 100).toFixed(1) : 0;
 
             return {
-              totalCash, twStockTotal, usStockTotalUSD, usStockTotalTWD, etfTotal, insuranceTotalTWD, totalFixedAssets,
+              totalCash, twStockTotal, usStockTotalUSD, usStockTotalTWD, etfTotal, insuranceTotalTWD, totalFixedAssets, insuranceAndFixedTotalTWD,
               totalInvestments, totalAssets, totalCreditCards, totalLoans, totalLiabilities, netWorth,
               totalIncome, totalExpenses, monthlyNet,
               emergencyFundMonths, debtToIncomeRatio, savingsRate, investmentRatio
@@ -225,10 +228,9 @@
             reader.readAsText(file);
           };
 
-          // --- 股價同步 (升級版：自動判斷 .TW 或 .TWO) ---
+          // --- 股價同步 ---
           const handleSyncPrices = async () => {
             setIsSyncing(true);
-            
             const fetchFromYahoo = async (ticker) => {
                 try {
                     const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`)}`);
@@ -236,33 +238,24 @@
                     return d.chart?.result?.[0]?.meta?.regularMarketPrice || null;
                 } catch { return null; }
             };
-
             const fetchPrice = async (item, isTw) => {
                 let ticker = (item.ticker || '').trim().toUpperCase();
                 if (!ticker && /^[A-Z0-9.]+$/i.test(item.name.trim())) ticker = item.name.trim().toUpperCase();
                 if (!ticker) return item;
-
-                // 如果是台股且為純數字
                 if (isTw && /^\d+$/.test(ticker)) {
-                    // 策略：先試上市(.TW)，若沒抓到再試上櫃(.TWO)
                     let price = await fetchFromYahoo(`${ticker}.TW`);
-                    if (!price) {
-                        price = await fetchFromYahoo(`${ticker}.TWO`);
-                    }
+                    if (!price) price = await fetchFromYahoo(`${ticker}.TWO`);
                     return price ? { ...item, price: Number(price.toFixed(2)) } : item;
                 } else {
-                    // 美股或已帶後綴的代號
                     const price = await fetchFromYahoo(ticker);
                     return price ? { ...item, price: Number(price.toFixed(2)) } : item;
                 }
             };
-
             const [tw, etfs, us] = await Promise.all([
                 Promise.all(assets.twStocks.map(i => fetchPrice(i, true))),
                 Promise.all(assets.etfs.map(i => fetchPrice(i, true))),
                 Promise.all(assets.usStocks.map(i => fetchPrice(i, false)))
             ]);
-            
             setAssets(prev => ({ ...prev, twStocks: tw, etfs, usStocks: us }));
             setIsSyncing(false);
             showToast("股價更新完成！");
@@ -441,11 +434,18 @@
                                             ))}
                                         </div>
                                     </div>
+                                    
+                                    {/* 修正：保險與固定資產 UI 顯示 */}
                                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                                        <h4 className="font-bold mb-4">保險與固定資產</h4>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="font-bold">保險與固定資產 <span className="text-xs font-normal text-gray-500">({formatCurrency(calculations.insuranceAndFixedTotalTWD)})</span></h4>
+                                        </div>
                                         <div className="space-y-6">
                                             <div>
-                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">現價保單</p><button onClick={() => handleAddItem('assets', 'insurances', { name: '', amount: 0, currency: 'TWD' })} className="text-blue-600 text-[10px]">+新增</button></div>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <p className="text-xs text-gray-500 font-bold">現價保單 <span className="font-normal opacity-70">({formatCurrency(calculations.insuranceTotalTWD)})</span></p>
+                                                    <button onClick={() => handleAddItem('assets', 'insurances', { name: '', amount: 0, currency: 'TWD' })} className="text-blue-600 text-[10px]">+新增</button>
+                                                </div>
                                                 <div className="space-y-2">
                                                     {assets.insurances.map(item => (
                                                         <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
@@ -460,7 +460,10 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="flex justify-between items-center mb-2"><p className="text-xs text-gray-500 font-bold">固定資產 (房/車)</p><button onClick={() => handleAddItem('assets', 'fixedAssetsList', { name: '', amount: 0 })} className="text-blue-600 text-[10px]">+新增</button></div>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <p className="text-xs text-gray-500 font-bold">固定資產 <span className="font-normal opacity-70">({formatCurrency(calculations.totalFixedAssets)})</span></p>
+                                                    <button onClick={() => handleAddItem('assets', 'fixedAssetsList', { name: '', amount: 0 })} className="text-blue-600 text-[10px]">+新增</button>
+                                                </div>
                                                 <div className="space-y-2">
                                                     {assets.fixedAssetsList.map(item => (
                                                         <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border text-sm">
@@ -481,9 +484,6 @@
                                             <h4 className="font-bold flex items-center gap-2">投資部位 <button onClick={handleSyncPrices} disabled={isSyncing} className={`text-[10px] px-2 py-1 rounded bg-blue-600 text-white flex items-center gap-1 ${isSyncing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}>{isSyncing ? <IconRefreshCw size={10} className="sync-loading"/> : <IconRefreshCw size={10}/>} 一鍵同步</button></h4>
                                             <span className="text-xs font-bold text-blue-700">總計: {formatCurrency(calculations.totalInvestments)}</span>
                                         </div>
-                                        
-                                        <p className="text-[10px] text-blue-500 mb-4 bg-white p-2 rounded border border-blue-100 italic">💡 提示：輸入代號 5498，系統會自動幫你檢查上市(.TW)與上櫃(.TWO)資料。</p>
-
                                         <div className="space-y-6">
                                             {[{ label: '台股', list: 'twStocks',小計: calculations.twStockTotal, def: '2330' }, { label: 'ETF', list: 'etfs', 小計: calculations.etfTotal, def: '0050' }, { label: '美股', list: 'usStocks', 小計: calculations.usStockTotalTWD, def: 'AAPL', unit: '$' }].map(block => (
                                                 <div key={block.list}>
